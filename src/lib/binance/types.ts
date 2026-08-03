@@ -42,13 +42,13 @@ export interface BinanceOrderResult {
   }>
 }
 
-export function parseKline(k: BinanceKline): Candle {
+export function parseKline(k: any[]): Candle {
   return {
-    time: Math.floor(k.openTime / 1000),
-    open: parseFloat(k.open),
-    high: parseFloat(k.high),
-    low: parseFloat(k.low),
-    close: parseFloat(k.close),
-    volume: parseFloat(k.volume),
+    time: Math.floor(Number(k[0]) / 1000),
+    open: parseFloat(k[1]),
+    high: parseFloat(k[2]),
+    low: parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    volume: parseFloat(k[5]),
   }
 }

@@ -1,10 +1,11 @@
 import { Redis } from '@upstash/redis'
 import type { BotState } from '@/types'
-import { getEnv } from '@/lib/config'
+import { getEnv, getConfig } from '@/lib/config'
 
 const STATE_KEY = 'money_machine:state'
 
 let redisClient: Redis | null = null
+let memoryState: BotState | null = null
 
 function getRedis(): Redis | null {
   if (redisClient) return redisClient
@@ -20,59 +21,44 @@ function getRedis(): Redis | null {
 
 export async function getState(): Promise<BotState | null> {
   const redis = getRedis()
-  if (!redis) return null
-  try {
-    return await redis.get<BotState>(STATE_KEY)
-  } catch {
-    return null
+  if (redis) {
+    try {
+      const remote = await redis.get<BotState>(STATE_KEY)
+      if (remote) return remote
+    } catch { /* fall through to memory */ }
   }
+  return memoryState
 }
 
 export async function setState(state: BotState): Promise<void> {
   const redis = getRedis()
-  if (!redis) return
-  try {
-    await redis.set(STATE_KEY, state)
-  } catch (err) {
-    console.error('Failed to save state:', err)
+  if (redis) {
+    try {
+      await redis.set(STATE_KEY, state)
+    } catch (err) {
+      console.error('Failed to save state to Redis:', err)
+    }
   }
+  memoryState = state
 }
 
 export async function updateState(updater: (state: BotState) => BotState): Promise<BotState | null> {
-  const redis = getRedis()
-  if (!redis) return null
-  try {
-    const current = await getState()
-    if (!current) return null
-    const updated = updater(current)
-    await setState(updated)
-    return updated
-  } catch {
-    return null
-  }
+  const current = await getState()
+  if (!current) return null
+  const updated = updater(current)
+  await setState(updated)
+  return updated
 }
 
 export function createInitialState(): BotState {
+  const config = getConfig()
   return {
-    config: {
-      mode: 'binary',
-      paper: true,
-      symbol: 'BTCUSDT',
-      timeframe: '1m',
-      stakeMode: 'fixed',
-      stakeFixed: 50,
-      stakePercent: 2,
-      maxPositionUsdt: 100,
-      riskPct: 0.01,
-      cooldownSeconds: 60,
-      lossCooldownSeconds: 600,
-      maxDailyDrawdownPct: 3,
-    },
+    config,
     price: 0,
     candles: [],
     indicators: null,
     lastSignal: null,
-    balance: { total: 1000, available: 1000, inPosition: 0 },
+    balance: { total: 100, available: 100, inPosition: 0 },
     openPosition: null,
     trades: [],
     performance: {

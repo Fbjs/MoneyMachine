@@ -110,33 +110,41 @@ export function adx(candles: Candle[], period: number): number[] {
 }
 
 export function rsi(data: number[], period: number): number[] {
-  const result: number[] = []
+  const result: number[] = new Array(data.length).fill(0)
   const gains: number[] = []
   const losses: number[] = []
-  for (let i = 0; i < data.length; i++) {
-    if (i === 0) {
-      gains.push(0)
-      losses.push(0)
-      result.push(0)
-    } else {
-      const diff = data[i] - data[i - 1]
-      gains.push(diff > 0 ? diff : 0)
-      losses.push(diff < 0 ? -diff : 0)
-      if (i < period) {
-        result.push(0)
-      } else if (i === period) {
-        let avgGain = gains.slice(1).reduce((a, b) => a + b, 0) / period
-        let avgLoss = losses.slice(1).reduce((a, b) => a + b, 0) / period
-        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss
-        result.push(100 - 100 / (1 + rs))
-      } else {
-        const avgGain = (gains.slice(1).reduce((a, b) => a + b, 0) / period)
-        const avgLoss = (losses.slice(1).reduce((a, b) => a + b, 0) / period)
-        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss
-        result.push(100 - 100 / (1 + rs))
-      }
-    }
+
+  for (let i = 1; i < data.length; i++) {
+    const diff = data[i] - data[i - 1]
+    gains.push(diff > 0 ? diff : 0)
+    losses.push(diff < 0 ? -diff : 0)
   }
+
+  if (gains.length < period) return result
+
+  let avgGain = 0
+  let avgLoss = 0
+
+  for (let i = 0; i < period; i++) {
+    avgGain += gains[i]
+    avgLoss += losses[i]
+  }
+
+  avgGain /= period
+  avgLoss /= period
+
+  const rs0 = avgLoss === 0 ? Infinity : avgGain / avgLoss
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + rs0)
+
+  for (let i = period + 1; i < data.length; i++) {
+    const gain = gains[i - 1]
+    const loss = losses[i - 1]
+    avgGain = (avgGain * (period - 1) + gain) / period
+    avgLoss = (avgLoss * (period - 1) + loss) / period
+    const rs = avgLoss === 0 ? Infinity : avgGain / avgLoss
+    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + rs)
+  }
+
   return result
 }
 

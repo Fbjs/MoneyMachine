@@ -26,9 +26,12 @@ export class SpotExecutor implements Executor {
       let trade: Trade
 
       if (!config.paper && binanceClient.hasCredentials()) {
+        if (signal.action === 'SELL' && balance.inPosition <= 0) {
+          return { success: false, error: 'Cannot open SELL in spot without existing position' }
+        }
         const order = signal.action === 'BUY'
           ? await binanceClient.marketBuy(config.symbol, config.stakeFixed.toString())
-          : await binanceClient.marketSell(config.symbol, (config.stakeFixed / entryPrice).toFixed(6))
+          : await binanceClient.marketSell(config.symbol, (balance.inPosition / entryPrice).toFixed(6))
 
         trade = {
           id: `spot_${Date.now()}_${tradeCounter}`,

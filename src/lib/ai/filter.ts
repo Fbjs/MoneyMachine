@@ -11,7 +11,7 @@ export function aiFilter(signal: Signal): AiFilterResult {
 
   const emaGapRatio = ema8 === 0 ? 0 : Math.min(1, Math.abs(ema3 - ema8) / ema8)
   const adxScore = Math.min(1, adx / 40)
-  const volatilityScore = Math.min(1, atr / indicators.volatilityRatio || 0)
+  const volatilityScore = Math.min(1, indicators.volatilityRatio)
   const rsiNeutrality = 1 - Math.abs(50 - rsi) / 50
 
   const score = (

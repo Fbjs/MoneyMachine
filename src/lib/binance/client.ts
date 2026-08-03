@@ -1,4 +1,4 @@
-import type { BinanceKline, BinanceAccountInfo, BinanceOrderResult } from './types'
+import type { BinanceAccountInfo, BinanceOrderResult } from './types'
 import { getEnv } from '@/lib/config'
 
 class BinanceClient {
@@ -67,8 +67,8 @@ class BinanceClient {
     return res.json()
   }
 
-  async getKlines(symbol: string, interval: string, limit = 100): Promise<BinanceKline[]> {
-    return this.request<BinanceKline[]>('/api/v3/klines', {
+  async getKlines(symbol: string, interval: string, limit = 100): Promise<any[][]> {
+    return this.request<any[][]>('/api/v3/klines', {
       symbol,
       interval,
       limit: limit.toString(),

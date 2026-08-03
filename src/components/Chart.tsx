@@ -23,23 +23,23 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
     if (!containerRef.current) return
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { color: '#0a0a0a' },
-        textColor: '#888',
+        background: { color: '#09090b' },
+        textColor: '#a1a1aa',
       },
       grid: {
-        vertLines: { color: '#1a1a1a' },
-        horzLines: { color: '#1a1a1a' },
+        vertLines: { color: '#18181b' },
+        horzLines: { color: '#18181b' },
       },
-      width: containerRef.current.clientWidth,
-      height: 400,
       crosshair: { mode: 0 },
       timeScale: {
-        borderColor: '#333',
+        borderColor: '#27272a',
         timeVisible: true,
+        secondsVisible: false,
       },
       rightPriceScale: {
-        borderColor: '#333',
+        borderColor: '#27272a',
       },
+      autoSize: true,
     })
 
     chartRef.current = chart
@@ -54,14 +54,12 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
     })
     candleRef.current = candleSeries
 
-    const ema3Series = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1 })
-    const ema8Series = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1 })
-    const ema50Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1 })
+    const ema3Series = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 })
+    const ema8Series = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 })
+    const ema50Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2 })
     ema3Ref.current = ema3Series
     ema8Ref.current = ema8Series
     ema50Ref.current = ema50Series
-
-    chart.timeScale().fitContent()
 
     return () => {
       chart.remove()
@@ -70,7 +68,7 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
 
   useEffect(() => {
     if (!candleRef.current || candles.length === 0) return
-    const cd: CandlestickData[] = candles.map(c => ({
+    const cd: CandlestickData[] = candles.map((c) => ({
       time: c.time as any,
       open: c.open,
       high: c.high,
@@ -78,11 +76,12 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
       close: c.close,
     }))
     candleRef.current.setData(cd)
+    chartRef.current?.timeScale().fitContent()
   }, [candles])
 
   useEffect(() => {
     if (!ema3Ref.current || !ema3 || candles.length === 0) return
-    const data: LineData[] = candles.map(c => ({
+    const data: LineData[] = candles.map((c) => ({
       time: c.time as any,
       value: ema3,
     }))
@@ -91,7 +90,7 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
 
   useEffect(() => {
     if (!ema8Ref.current || !ema8 || candles.length === 0) return
-    const data: LineData[] = candles.map(c => ({
+    const data: LineData[] = candles.map((c) => ({
       time: c.time as any,
       value: ema8,
     }))
@@ -100,12 +99,18 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
 
   useEffect(() => {
     if (!ema50Ref.current || !ema50 || candles.length === 0) return
-    const data: LineData[] = candles.map(c => ({
+    const data: LineData[] = candles.map((c) => ({
       time: c.time as any,
       value: ema50,
     }))
     ema50Ref.current.setData(data)
   }, [candles, ema50])
 
-  return <div ref={containerRef} className="w-full rounded-lg overflow-hidden" />
+  return (
+    <div
+      ref={containerRef}
+      className="w-full rounded-lg overflow-hidden"
+      style={{ height: 400, minHeight: 400 }}
+    />
+  )
 }

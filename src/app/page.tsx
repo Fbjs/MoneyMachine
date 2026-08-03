@@ -60,7 +60,7 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-3 bg-zinc-900 rounded-lg p-3 border border-zinc-800">
               <Chart
-                candles={data.candles.slice(-60)}
+                candles={data.candles}
                 ema3={data.indicators?.ema3}
                 ema8={data.indicators?.ema8}
                 ema50={data.indicators?.ema50}

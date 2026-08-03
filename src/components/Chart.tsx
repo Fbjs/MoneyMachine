@@ -35,6 +35,9 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
         borderColor: '#27272a',
         timeVisible: true,
         secondsVisible: false,
+        tickMarkFormatter: (time: number) => {
+          return new Date(time * 1000).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+        },
       },
       rightPriceScale: {
         borderColor: '#27272a',

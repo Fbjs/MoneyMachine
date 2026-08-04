@@ -1,7 +1,6 @@
 import type { Executor, ExecuteResult } from './types'
 import type { Trade, TradeSide, BotConfig, AccountBalance } from '@/types'
 import { binanceClient } from '@/lib/binance/client'
-import { sendTelegram, formatTradeMessage } from '@/lib/utils/telegram'
 
 let tradeCounter = 0
 
@@ -67,11 +66,6 @@ export class SpotExecutor implements Executor {
           closedAt: null,
         }
       }
-
-      await sendTelegram(formatTradeMessage(
-        'NEW POSITION', config.symbol, side, config.stakeFixed, entryPrice,
-        signal.confidence, `spot_${config.paper ? 'paper' : 'live'}`, config.paper,
-      ))
 
       return { success: true, trade }
     } catch (err: any) {

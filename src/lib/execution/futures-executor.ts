@@ -1,7 +1,6 @@
 import type { Executor, ExecuteResult } from './types'
 import type { Trade, TradeSide, BotConfig, AccountBalance } from '@/types'
 import { signalToSide } from '@/lib/strategy/signal-engine'
-import { sendTelegram, formatTradeMessage } from '@/lib/utils/telegram'
 
 let tradeCounter = 0
 
@@ -37,11 +36,6 @@ export class FuturesExecutor implements Executor {
       openedAt: Date.now(),
       closedAt: null,
     }
-
-    await sendTelegram(formatTradeMessage(
-      'NEW POSITION', config.symbol, side, config.stakeFixed, 0,
-      signal.confidence, `futures_${config.paper ? 'paper' : 'live'}`, config.paper,
-    ))
 
     return { success: true, trade }
   }

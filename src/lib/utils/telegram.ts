@@ -41,7 +41,8 @@ export function formatTradeMessage(
   const modeLabel = isPaper ? '📄 PAPER' : '🔴 LIVE'
   let msg = `${emoji} <b>${action}</b> ${modeLabel}\n`
   msg += `└ ${symbol} ${side} | $${stake}\n`
-  msg += `└ Entry: $${entryPrice}\n`
+  const priceLabel = pnl !== undefined ? 'Exit' : 'Entry'
+  msg += `└ ${priceLabel}: $${entryPrice}\n`
   msg += `└ Mode: ${mode.toUpperCase()}\n`
   msg += `└ Confidence: ${(confidence * 100).toFixed(1)}%`
   if (pnl !== undefined) {

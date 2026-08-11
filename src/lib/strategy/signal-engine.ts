@@ -9,8 +9,8 @@ export function generateSignal(indicators: Indicators): Signal {
   const emaGap = ema8 === 0 ? 0 : Math.abs(ema3 - ema8) / ema8
   let reason = ''
 
-  const bullish = ema3 > ema8 && currentPrice > ema50 && volatilityRatio >= 0.4 && adx >= 15 && rsi < 70
-  const bearish = ema3 < ema8 && currentPrice < ema50 && volatilityRatio >= 0.4 && adx >= 15 && rsi > 30
+  const bullish = ema3 > ema8 && currentPrice > ema50 && volatilityRatio >= 0.4 && adx >= 22 && rsi < 70
+  const bearish = ema3 < ema8 && currentPrice < ema50 && volatilityRatio >= 0.4 && adx >= 22 && rsi > 30
 
   if (bullish) {
     action = 'BUY'
@@ -21,7 +21,7 @@ export function generateSignal(indicators: Indicators): Signal {
     confidence = Math.min(1, emaGap * 5 + adx / 100)
     reason = `Bearish: EMA3<EMA8, price<EMA50, ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}`
   } else {
-    reason = `HOLD: no clear signal (ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}, VR=${volatilityRatio.toFixed(2)})`
+    reason = `HOLD: no clear signal (ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}, VR=${volatilityRatio.toFixed(2)}, minADX=22)`
   }
 
   return {

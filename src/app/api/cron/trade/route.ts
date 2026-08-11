@@ -83,8 +83,11 @@ export async function POST() {
     const riskMgr = new RiskManager(state.balance.total)
     riskMgr.load(state.risk)
 
-    // Handle open position: close on opposite signal
+    // Handle open position: check TP/SL first, then opposite signal
     if (state.openPosition) {
+      const executor = getExecutor(config.mode)
+      const exit = executor.checkExit(state.openPosition, state.price)
+
       const positionSide = state.openPosition.side
       const isOpposite =
         (positionSide === 'BUY' && signal.action === 'SELL') ||
@@ -94,9 +97,11 @@ export async function POST() {
         (positionSide === 'PUT' && signal.action === 'BUY') ||
         (positionSide === 'SHORT' && signal.action === 'BUY')
 
-      if (isOpposite) {
-        const executor = getExecutor(config.mode)
-        const exit = executor.checkExit(state.openPosition, state.price)
+      // TP/SL: 3:1 risk/reward ratio using stake percentage
+      const stopLoss = -state.openPosition.stake * 0.015
+      const takeProfit = state.openPosition.stake * 0.03
+
+      if (exit.pnl <= stopLoss || exit.pnl >= takeProfit || isOpposite) {
 
         // Execute live close order for spot
         if (!config.paper && config.mode === 'spot' && binanceClient.hasCredentials()) {

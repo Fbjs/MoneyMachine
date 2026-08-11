@@ -65,7 +65,7 @@ export class RiskManager {
   onTradeResult(trade: Trade) {
     if (trade.status === 'LOSS') {
       this.metrics.consecutiveLosses++
-      this.metrics.dailyPnl -= (trade.stake || 0)
+      this.metrics.dailyPnl += (trade.pnl || 0)
       if (this.metrics.consecutiveLosses >= 3) {
         this.metrics.inCooldown = true
         this.metrics.cooldownEnd = Date.now() + getConfig().lossCooldownSeconds * 1000

@@ -58,7 +58,7 @@ export function createInitialState(): BotState {
     candles: [],
     indicators: null,
     lastSignal: null,
-    balance: { total: 100, available: 100, inPosition: 0 },
+    balance: { total: 1000, available: 1000, inPosition: 0 },
     openPosition: null,
     trades: [],
     performance: {

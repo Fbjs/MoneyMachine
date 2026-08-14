@@ -20,6 +20,7 @@ export async function POST() {
     state = createInitialState()
     state.config = config
   }
+  state.config = config
 
   const errors: string[] = []
   let result: Record<string, unknown> = { status: 'ok' }

@@ -30,11 +30,16 @@ export class FuturesExecutor implements Executor {
       quantity: 0,
       stake: config.stakeFixed,
       pnl: null,
+      grossPnl: null,
+      fees: null,
       status: 'OPEN',
       confidence: signal.confidence,
+      aiScore: null,
       signalReason: `${signal.action} signal (${leverage}x)`,
       openedAt: Date.now(),
       closedAt: null,
+      stopLossPrice: null,
+      takeProfitPrice: null,
     }
 
     return { success: true, trade }

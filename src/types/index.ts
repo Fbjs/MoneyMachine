@@ -1,6 +1,7 @@
 export type BotMode = 'binary' | 'spot' | 'futures'
 export type StakeMode = 'fixed' | 'percent'
 export type SignalAction = 'BUY' | 'SELL' | 'HOLD'
+export type TrendDirection = 'UP' | 'DOWN' | 'SIDEWAYS'
 export type TradeSide = 'CALL' | 'PUT' | 'BUY' | 'SELL' | 'LONG' | 'SHORT'
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS' | 'CLOSED'
 export type TradeMode = 'binary' | 'spot' | 'futures'
@@ -21,6 +22,8 @@ export interface Indicators {
   atr: number
   adx: number
   rsi: number
+  plusDi: number
+  minusDi: number
   volatilityRatio: number
 }
 
@@ -41,11 +44,16 @@ export interface Trade {
   quantity: number
   stake: number
   pnl: number | null
+  grossPnl: number | null
+  fees: number | null
   status: TradeStatus
   confidence: number
+  aiScore: number | null
   signalReason: string
   openedAt: number
   closedAt: number | null
+  stopLossPrice: number | null
+  takeProfitPrice: number | null
 }
 
 export interface Performance {
@@ -66,6 +74,9 @@ export interface RiskMetrics {
   currentDrawdown: number
   maxDrawdown: number
   dailyPnl: number
+  dailyPnlDate: string | null
+  dayStartBalance: number | null
+  equityPeak: number | null
   consecutiveLosses: number
   inCooldown: boolean
   cooldownEnd: number
@@ -91,6 +102,16 @@ export interface BotConfig {
   cooldownSeconds: number
   lossCooldownSeconds: number
   maxDailyDrawdownPct: number
+  trendTimeframe: string
+  trendEmaFast: number
+  trendEmaSlow: number
+  feeRate: number
+  minExpectedMoveAtr: number
+  slAtrMult: number
+  tpAtrMult: number
+  trailingAtrMult: number
+  dailyStopLossPct: number
+  tradeActiveHours: string
 }
 
 export interface BotState {

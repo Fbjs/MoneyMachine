@@ -157,6 +157,7 @@ export function computeIndicators(candles: Candle[]): Indicators | null {
   const atrVals = atr(candles, 14)
   const adxVals = adx(candles, 14)
   const rsiVals = rsi(closes, 14)
+  const di = directionalIndex(candles, 14)
   const last = candles.length - 1
   const currentPrice = candles[last].close
   const avgPrice = (candles[last].high + candles[last].low + candles[last].close) / 3
@@ -167,6 +168,58 @@ export function computeIndicators(candles: Candle[]): Indicators | null {
     atr: atrVals[last],
     adx: adxVals[last],
     rsi: rsiVals[last],
+    plusDi: di.plusDi,
+    minusDi: di.minusDi,
     volatilityRatio: avgPrice === 0 ? 0 : (atrVals[last] / avgPrice) * 1000,
+  }
+}
+
+export function directionalIndex(candles: Candle[], period: number): { plusDi: number; minusDi: number } {
+  const tr: number[] = []
+  const plusDM: number[] = []
+  const minusDM: number[] = []
+  for (let i = 0; i < candles.length; i++) {
+    if (i === 0) {
+      tr.push(candles[i].high - candles[i].low)
+      plusDM.push(0)
+      minusDM.push(0)
+    } else {
+      const prev = candles[i - 1]
+      tr.push(Math.max(
+        candles[i].high - candles[i].low,
+        Math.abs(candles[i].high - prev.close),
+        Math.abs(candles[i].low - prev.close)
+      ))
+      const upMove = candles[i].high - prev.high
+      const downMove = prev.low - candles[i].low
+      plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0)
+      minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0)
+    }
+  }
+  const k = 2 / (period + 1)
+  const atrVals: number[] = []
+  const plusSmooth: number[] = []
+  const minusSmooth: number[] = []
+  let sumTR = 0, sumPlus = 0, sumMinus = 0
+  for (let i = 0; i < tr.length; i++) {
+    if (i < period) {
+      sumTR += tr[i]
+      sumPlus += plusDM[i]
+      sumMinus += minusDM[i]
+      atrVals.push(i === period - 1 ? sumTR / period : 0)
+      plusSmooth.push(i === period - 1 ? sumPlus / period : 0)
+      minusSmooth.push(i === period - 1 ? sumMinus / period : 0)
+    } else {
+      atrVals.push(tr[i] * k + atrVals[i - 1] * (1 - k))
+      plusSmooth.push(plusDM[i] * k + plusSmooth[i - 1] * (1 - k))
+      minusSmooth.push(minusDM[i] * k + minusSmooth[i - 1] * (1 - k))
+    }
+  }
+  const last = candles.length - 1
+  const atrLast = atrVals[last]
+  if (!atrLast) return { plusDi: 0, minusDi: 0 }
+  return {
+    plusDi: (plusSmooth[last] / atrLast) * 100,
+    minusDi: (minusSmooth[last] / atrLast) * 100,
   }
 }

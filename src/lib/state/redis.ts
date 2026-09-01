@@ -68,6 +68,7 @@ export function createInitialState(): BotState {
     },
     risk: {
       currentDrawdown: 0, maxDrawdown: 0, dailyPnl: 0,
+      dailyPnlDate: null, dayStartBalance: 1000, equityPeak: 1000,
       consecutiveLosses: 0, inCooldown: false,
       cooldownEnd: 0, tradingDisabled: false,
     },

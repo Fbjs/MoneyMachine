@@ -16,6 +16,11 @@ export class SpotExecutor implements Executor {
       return { success: false, error: 'No signal' }
     }
 
+    // Spot is long-only: there is no real shorting in spot markets.
+    if (signal.action === 'SELL') {
+      return { success: false, error: 'Cannot open SELL in spot (long-only)' }
+    }
+
     tradeCounter++
     const side = signal.action === 'BUY' ? 'BUY' : 'SELL'
 
@@ -25,12 +30,7 @@ export class SpotExecutor implements Executor {
       let trade: Trade
 
       if (!config.paper && binanceClient.hasCredentials()) {
-        if (signal.action === 'SELL' && balance.inPosition <= 0) {
-          return { success: false, error: 'Cannot open SELL in spot without existing position' }
-        }
-        const order = signal.action === 'BUY'
-          ? await binanceClient.marketBuy(config.symbol, config.stakeFixed.toString())
-          : await binanceClient.marketSell(config.symbol, (balance.inPosition / entryPrice).toFixed(6))
+        const order = await binanceClient.marketBuy(config.symbol, config.stakeFixed.toString())
 
         trade = {
           id: `spot_${Date.now()}_${tradeCounter}`,
@@ -42,11 +42,16 @@ export class SpotExecutor implements Executor {
           quantity: parseFloat(order.executedQty),
           stake: config.stakeFixed,
           pnl: null,
+          grossPnl: null,
+          fees: null,
           status: 'OPEN',
           confidence: signal.confidence,
+          aiScore: null,
           signalReason: `${signal.action} signal`,
           openedAt: Date.now(),
           closedAt: null,
+          stopLossPrice: null,
+          takeProfitPrice: null,
         }
       } else {
         trade = {
@@ -59,11 +64,16 @@ export class SpotExecutor implements Executor {
           quantity: config.stakeFixed / entryPrice,
           stake: config.stakeFixed,
           pnl: null,
+          grossPnl: null,
+          fees: null,
           status: 'OPEN',
           confidence: signal.confidence,
+          aiScore: null,
           signalReason: `${signal.action} signal (paper)`,
           openedAt: Date.now(),
           closedAt: null,
+          stopLossPrice: null,
+          takeProfitPrice: null,
         }
       }
 

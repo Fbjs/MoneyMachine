@@ -6,7 +6,6 @@ let tradeCounter = 0
 
 export class BinaryExecutor implements Executor {
   name = 'binary'
-  private lastPrice: Record<string, number> = {}
 
   async execute(
     signal: { action: string; confidence: number },
@@ -29,18 +28,22 @@ export class BinaryExecutor implements Executor {
       quantity: 0,
       stake: 0,
       pnl: null,
+      grossPnl: null,
+      fees: null,
       status: 'OPEN',
       confidence: signal.confidence,
+      aiScore: null,
       signalReason: `${signal.action} signal`,
       openedAt: Date.now(),
       closedAt: null,
+      stopLossPrice: null,
+      takeProfitPrice: null,
     }
 
     return { success: true, trade }
   }
 
   checkExit(position: Trade, currentPrice: number): { shouldExit: boolean; exitPrice: number; pnl: number } {
-    const prevPrice = this.lastPrice[position.id]
     const isCallWin = position.side === 'CALL' && currentPrice > position.entryPrice
     const isPutWin = position.side === 'PUT' && currentPrice < position.entryPrice
     const payout = position.stake * 0.90

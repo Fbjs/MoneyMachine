@@ -99,6 +99,20 @@ COOLDOWN_SECONDS=60
 LOSS_COOLDOWN_SECONDS=600
 MAX_DAILY_DRAWDOWN_PCT=3
 
+# Tendencia (filtro de régimen en timeframe superior)
+TREND_TIMEFRAME=1h             # timeframe para calcular la tendencia
+TREND_EMA_FAST=50              # EMA rápida de tendencia
+TREND_EMA_SLOW=200             # EMA lenta de tendencia
+
+# Fees y gestión de posición
+FEE_RATE=0.001                 # comisión por lado (0.1%)
+MIN_EXPECTED_MOVE_ATR=1.0      # movimiento mínimo esperado en múltiplos de fees
+SL_ATR_MULT=1.5                # stop loss = ATR × multiplicador
+TP_ATR_MULT=3.0                # take profit = ATR × multiplicador
+TRAILING_ATR_MULT=0            # trailing stop (0 = desactivado)
+DAILY_STOP_LOSS_PCT=1.0        # stop diario de pérdidas (%)
+TRADE_ACTIVE_HOURS=            # horario activo UTC (ej. "08-20"). Vacío = 24h
+
 # Upstash Redis (necesario para estado persistente)
 UPSTASH_REDIS_URL=
 UPSTASH_REDIS_TOKEN=
@@ -185,28 +199,51 @@ El endpoint `/api/cron/trade` ejecuta el ciclo completo cada vez que es llamado:
 ### Indicadores técnicos
 - **EMA3**, **EMA8**, **EMA50** — Medias móviles exponenciales
 - **ATR(14)** — Volatilidad
-- **ADX(14)** — Fuerza de la tendencia (requiere ≥ 15)
+- **ADX(14)** — Fuerza de la tendencia (requiere ≥ 22)
+- **+DI/−DI(14)** — Dirección del movimiento (confirmación)
 - **RSI(14)** — Momentum (requiere < 70 para BUY, > 30 para SELL)
 - **Volatility Ratio** — (ATR / precio promedio) × 1000 (requiere ≥ 0.4)
 
+### Filtro de tendencia (regime filter)
+La tendencia se calcula en un timeframe superior (`TREND_TIMEFRAME`, por defecto 1h) comparando `TREND_EMA_FAST` (50) vs `TREND_EMA_SLOW` (200):
+- **UP**: solo se permiten señales BUY.
+- **DOWN**: solo se permiten señales SELL.
+- **SIDEWAYS**: no se opera (HOLD).
+
 ### Señal BUY
-`EMA3 > EMA8 AND close > EMA50 AND volatility >= 0.4 AND ADX >= 15 AND RSI < 70`
+`EMA3 > EMA8 AND close > EMA50 AND volatility >= 0.4 AND ADX >= 22 AND RSI < 70 AND +DI > −DI` + tendencia `UP`
 
 ### Señal SELL
-`EMA3 < EMA8 AND close < EMA50 AND volatility >= 0.4 AND ADX >= 15 AND RSI > 30`
+`EMA3 < EMA8 AND close < EMA50 AND volatility >= 0.4 AND ADX >= 22 AND RSI > 30 AND −DI > +DI` + tendencia `DOWN`
 
 ### Filtro AI
 Puntúa la señal 0-1 basado en:
-- EMA gap ratio (30%)
-- ADX / 40 (30%)
+- EMA gap ratio (20%)
+- ADX / 40 (40%)
 - Volatilidad (20%)
 - Neutralidad RSI (20%)
-- **Se rechaza si score < 0.75**
+- **Se rechaza si score < 0.60**
+
+El score del filtro se persiste en cada trade (`aiScore`) para poder validarlo.
+
+### Salidas (TP/SL por ATR)
+- **Stop Loss** = entrada − (`SL_ATR_MULT` × ATR) para long (inverso para short).
+- **Take Profit** = entrada + (`TP_ATR_MULT` × ATR) para long.
+- **Trailing stop** opcional (`TRAILING_ATR_MULT` > 0).
+- **Salida por cambio de régimen**: se cierra la posición si la tendencia se invierte.
+
+### Fees
+El PnL neto descuenta comisión round-trip (`FEE_RATE` × 2). Las operaciones cuyo movimiento esperado (ATR) no supera `MIN_EXPECTED_MOVE_ATR` × fees se descartan.
 
 ### Risk Management
-- Drawdown máximo diario: 3% (detiene trading si se excede)
-- Cooldown: 60s normal, 600s después de 3 pérdidas consecutivas
-- Streak: después de 2 pérdidas seguidas, el stake se reduce a la mitad
+- Drawdown máximo diario: `MAX_DAILY_DRAWDOWN_PCT` (se detiene trading si se excede).
+- Stop diario de pérdidas: `DAILY_STOP_LOSS_PCT`.
+- Cooldown: `COOLDOWN_SECONDS` normal tras un win; `LOSS_COOLDOWN_SECONDS` tras 3 pérdidas (×6 tras 5 pérdidas).
+- Streak: después de 2 pérdidas seguidas, el stake se reduce a la mitad.
+
+## Backtesting
+
+El endpoint `GET /api/backtest` ejecuta un backtest histórico (replay de klines) con la estrategia actual, incluyendo fees, y devuelve métricas (win rate, profit factor, max drawdown, expectativa) y el listado de trades. Útil para validar cambios de parámetros antes de desplegar.
 
 ## Dashboard
 
@@ -227,6 +264,7 @@ Los datos se actualizan vía SWR polling cada 5 segundos a `/api/data`.
 | `/api/config` | GET | Configuración actual |
 | `/api/config` | PUT | Actualizar configuración |
 | `/api/cron/trade` | POST | Ejecutar ciclo de trading |
+| `/api/backtest` | GET | Backtest histórico de la estrategia |
 
 ## Notificaciones Telegram
 

@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import Chart from '@/components/Chart'
 import MetricsBar from '@/components/MetricsBar'
 import StrategyPanel from '@/components/StrategyPanel'
+import PositionCard from '@/components/PositionCard'
 import TradeHistory from '@/components/TradeHistory'
 import type { BotState } from '@/types'
 
@@ -55,25 +56,23 @@ export default function Home() {
             performance={data.performance}
             risk={data.risk}
             symbol={data.config.symbol}
+            totalFees={data.trades.reduce((acc, t) => acc + (t.fees ?? 0), 0)}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-3 bg-zinc-900 rounded-lg p-3 border border-zinc-800">
-              <Chart
-                candles={data.candles}
-                ema3={data.indicators?.ema3}
-                ema8={data.indicators?.ema8}
-                ema50={data.indicators?.ema50}
-              />
+              <Chart candles={data.candles} />
             </div>
 
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 space-y-4">
               <StrategyPanel
                 lastSignal={data.lastSignal}
                 indicators={data.indicators}
                 config={data.config}
+                trend={data.trend ?? 'SIDEWAYS'}
                 openPosition={!!data.openPosition}
               />
+              <PositionCard position={data.openPosition} price={data.price} />
             </div>
           </div>
 

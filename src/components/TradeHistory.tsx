@@ -6,6 +6,14 @@ interface Props {
   trades: Trade[]
 }
 
+function formatDuration(ms: number): string {
+  const totalMin = Math.round(ms / 60000)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
 export default function TradeHistory({ trades }: Props) {
   if (trades.length === 0) {
     return (
@@ -29,7 +37,10 @@ export default function TradeHistory({ trades }: Props) {
               <th className="text-right py-2 pr-3">Entry</th>
               <th className="text-right py-2 pr-3">Exit</th>
               <th className="text-right py-2 pr-3">Stake</th>
+              <th className="text-right py-2 pr-3">Fees</th>
               <th className="text-right py-2 pr-3">P&L</th>
+              <th className="text-right py-2 pr-3">AI</th>
+              <th className="text-right py-2 pr-3">Dur</th>
               <th className="text-right py-2">Status</th>
             </tr>
           </thead>
@@ -42,9 +53,12 @@ export default function TradeHistory({ trades }: Props) {
                 <td className="text-right py-2 pr-3 font-mono">${t.entryPrice.toFixed(2)}</td>
                 <td className="text-right py-2 pr-3 font-mono">{t.exitPrice ? `$${t.exitPrice.toFixed(2)}` : '-'}</td>
                 <td className="text-right py-2 pr-3 font-mono">${t.stake.toFixed(2)}</td>
+                <td className="text-right py-2 pr-3 font-mono text-zinc-500">{t.fees !== null && t.fees !== undefined ? `$${t.fees.toFixed(2)}` : '-'}</td>
                 <td className={`text-right py-2 pr-3 font-mono ${t.pnl !== null ? (t.pnl >= 0 ? 'text-green-400' : 'text-red-400') : ''}`}>
                   {t.pnl !== null ? `${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}` : '-'}
                 </td>
+                <td className="text-right py-2 pr-3 font-mono text-zinc-500">{t.aiScore !== null && t.aiScore !== undefined ? `${(t.aiScore * 100).toFixed(0)}%` : '-'}</td>
+                <td className="text-right py-2 pr-3 font-mono text-zinc-500">{t.closedAt ? formatDuration(t.closedAt - t.openedAt) : '-'}</td>
                 <td className={`text-right py-2 ${t.status === 'WIN' ? 'text-green-400' : t.status === 'LOSS' ? 'text-red-400' : 'text-yellow-400'}`}>
                   {t.status}
                 </td>

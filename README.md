@@ -27,6 +27,7 @@ money-machine/
 │   │       ├── data/route.ts           # GET /api/data → estado completo
 │   │       ├── trades/route.ts         # GET /api/trades → historial
 │   │       ├── config/route.ts         # GET/PUT /api/config
+│   │       ├── backtest/route.ts       # GET /api/backtest → backtest histórico
 │   │       └── cron/
 │   │           └── trade/route.ts      # POST /api/cron/trade → ciclo trading
 │   │
@@ -36,18 +37,20 @@ money-machine/
 │   │   │   ├── client.ts               # Cliente REST Binance (klines, órdenes, cuenta)
 │   │   │   └── types.ts                # Tipos Binance + parseKline
 │   │   ├── strategy/
-│   │   │   ├── types.ts                # Tipos de estrategia
-│   │   │   ├── indicators.ts           # EMA, ATR, ADX, RSI desde cero
-│   │   │   └── signal-engine.ts        # BUY/SELL/HOLD + confidence score
+│   │   │   ├── indicators.ts           # EMA, ATR, ADX, RSI, +DI/−DI desde cero
+│   │   │   ├── signal-engine.ts        # BUY/SELL/HOLD + confidence score
+│   │   │   └── trend.ts                # Filtro de tendencia (EMA fast/slow en TF superior)
 │   │   ├── ai/
-│   │   │   └── filter.ts               # Filtro de confianza (score ≥ 0.75)
+│   │   │   └── filter.ts               # Filtro de confianza (score ≥ 0.60)
 │   │   ├── risk/
-│   │   │   └── manager.ts              # Drawdown 3%, cooldown, streaks, stake
+│   │   │   └── manager.ts              # Drawdown, equity peak, stop diario, cooldown, streaks
+│   │   ├── backtest/
+│   │   │   └── engine.ts               # Replay histórico de klines (fees + TP/SL/trend)
 │   │   ├── execution/
 │   │   │   ├── types.ts                # Interfaz Executor
 │   │   │   ├── factory.ts              # Crea executor según BOT_MODE
 │   │   │   ├── binary-executor.ts      # CALL/PUT (paper + live)
-│   │   │   ├── spot-executor.ts        # Market buy/sell (paper + live)
+│   │   │   ├── spot-executor.ts        # Long-only (paper + live)
 │   │   │   └── futures-executor.ts     # Long/Short con leverage
 │   │   ├── state/
 │   │   │   └── redis.ts                # Upstash Redis get/set/update
@@ -56,9 +59,10 @@ money-machine/
 │   │
 │   ├── components/
 │   │   ├── Chart.tsx                   # Gráfico velas + EMAs (Lightweight Charts v5)
-│   │   ├── MetricsBar.tsx              # Precio, Balance, Win Rate, P&L, Drawdown
-│   │   ├── StrategyPanel.tsx           # Señal actual, indicadores, modo, posición
-│   │   └── TradeHistory.tsx            # Tabla de trades con P&L
+│   │   ├── MetricsBar.tsx              # Precio, Balance, Win Rate, P&L, DD, Fees
+│   │   ├── StrategyPanel.tsx           # Señal, tendencia, indicadores, modo
+│   │   ├── PositionCard.tsx            # Posición abierta (entry, SL/TP, PnL no realizado)
+│   │   └── TradeHistory.tsx            # Tabla de trades con P&L, fees, aiScore
 │   │
 │   └── types/
 │       └── index.ts                    # Tipos globales (Candle, Trade, Signal, BotState, etc.)
@@ -85,7 +89,7 @@ BINANCE_SECRET_KEY=
 
 # Mercado
 SYMBOL=BTCUSDT
-TIMEFRAME=1m
+TIMEFRAME=1h                 # 1h o 4h recomendado (fees vs ATR)
 
 # Stake (tamaño de posición)
 STAKE_MODE=fixed             # fixed | percent
@@ -100,7 +104,7 @@ LOSS_COOLDOWN_SECONDS=600
 MAX_DAILY_DRAWDOWN_PCT=3
 
 # Tendencia (filtro de régimen en timeframe superior)
-TREND_TIMEFRAME=1h             # timeframe para calcular la tendencia
+TREND_TIMEFRAME=4h             # timeframe para calcular la tendencia
 TREND_EMA_FAST=50              # EMA rápida de tendencia
 TREND_EMA_SLOW=200             # EMA lenta de tendencia
 
@@ -168,14 +172,16 @@ Vercel Hobby plan no permite cron jobs frecuentes, por lo que se usa un servicio
    - **Request Body**: (vacío)
 
 El endpoint `/api/cron/trade` ejecuta el ciclo completo cada vez que es llamado:
-1. Obtiene velas de Binance REST
-2. Calcula EMA3/8/50, ATR, ADX, RSI
-3. Genera señal BUY/SELL/HOLD
-4. Aplica filtro AI (requiere score ≥ 0.75)
-5. Risk manager verifica drawdown, cooldown
-6. Ejecuta trade según BOT_MODE
-7. Guarda estado en Upstash Redis
-8. Retorna resultado
+1. Obtiene velas de Binance REST (timeframe de trading + timeframe de tendencia)
+2. Calcula EMA3/8/50, ATR, ADX, RSI, +DI/−DI
+3. Calcula la tendencia (EMA fast/slow en `TREND_TIMEFRAME`)
+4. Gestiona la posición abierta: SL/TP por ATR, trailing y cambio de régimen
+5. Genera señal BUY/SELL/HOLD (solo a favor de la tendencia)
+6. Aplica filtro AI (requiere score ≥ 0.60) y umbral de movimiento vs fees
+7. Risk manager verifica drawdown, stop diario, cooldown
+8. Ejecuta trade según BOT_MODE
+9. Guarda estado en Upstash Redis
+10. Retorna resultado
 
 ## Modos de trading
 
@@ -185,9 +191,9 @@ El endpoint `/api/cron/trade` ejecuta el ciclo completo cada vez que es llamado:
 - Paga 90% en aciertos, pierde 100% en fallos
 
 ### Spot (`BOT_MODE=spot`)
-- BUY: compra al precio de mercado
-- SELL: vende al precio de mercado
-- P&L = diferencia de precio × cantidad
+- **Long-only**: solo abre BUY a favor de la tendencia alcista; no opera short (no existe en spot).
+- P&L = diferencia de precio × cantidad, menos fees.
+- En tendencia bajista queda en HOLD (sin posición).
 
 ### Futures (`BOT_MODE=futures`)
 - LONG si la señal es BUY
@@ -248,10 +254,11 @@ El endpoint `GET /api/backtest` ejecuta un backtest histórico (replay de klines
 ## Dashboard
 
 El dashboard en `/` muestra:
-- **Métricas**: precio actual, balance, win rate, trades totales, P&L, drawdown
-- **Gráfico**: velas OHLC con EMAs superpuestas (Lightweight Charts)
-- **Panel de estrategia**: señal actual, indicadores, modo, estado de posición
-- **Historial de trades**: tabla con side, entry, exit, stake, P&L, status
+- **Métricas**: precio, balance, win rate, trades totales, P&L, P&L diario, profit factor, expectativa, max drawdown, fees totales
+- **Gráfico**: velas OHLC con EMA3/8/50 superpuestas (Lightweight Charts)
+- **Panel de estrategia**: señal actual, tendencia (UP/DOWN/SIDEWAYS), indicadores (+DI/−DI), configuración
+- **Posición abierta**: side, entry, stake, stop loss y take profit por ATR, P&L no realizado
+- **Historial de trades**: tabla con side, entry, exit, stake, fees, P&L neto, aiScore, duración, status
 
 Los datos se actualizan vía SWR polling cada 5 segundos a `/api/data`.
 

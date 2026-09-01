@@ -120,6 +120,7 @@ export interface BotState {
   candles: Candle[]
   indicators: Indicators | null
   lastSignal: Signal | null
+  trend: TrendDirection
   balance: AccountBalance
   openPosition: Trade | null
   trades: Trade[]

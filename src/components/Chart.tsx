@@ -2,16 +2,47 @@
 
 import { useEffect, useRef } from 'react'
 import type { Candle } from '@/types'
-import { createChart, CandlestickSeries, LineSeries, type IChartApi, type ISeriesApi, type CandlestickData, type LineData } from 'lightweight-charts'
+import {
+  createChart,
+  CandlestickSeries,
+  LineSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type CandlestickData,
+  type LineData,
+  type UTCTimestamp,
+} from 'lightweight-charts'
 
 interface Props {
   candles: Candle[]
-  ema3?: number
-  ema8?: number
-  ema50?: number
 }
 
-export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
+function emaSeries(data: number[], period: number): (number | null)[] {
+  const k = 2 / (period + 1)
+  const result: (number | null)[] = []
+  let sum = 0
+  for (let i = 0; i < data.length; i++) {
+    if (i < period) {
+      sum += data[i]
+      result.push(i === period - 1 ? sum / period : null)
+    } else {
+      const prev = result[i - 1]
+      result.push(prev !== null ? data[i] * k + prev * (1 - k) : null)
+    }
+  }
+  return result
+}
+
+function toLineData(candles: Candle[], values: (number | null)[]): LineData[] {
+  const out: LineData[] = []
+  for (let i = 0; i < candles.length; i++) {
+    const v = values[i]
+    if (v !== null) out.push({ time: candles[i].time as UTCTimestamp, value: v })
+  }
+  return out
+}
+
+export default function Chart({ candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -71,43 +102,23 @@ export default function Chart({ candles, ema3, ema8, ema50 }: Props) {
 
   useEffect(() => {
     if (!candleRef.current || candles.length === 0) return
+
     const cd: CandlestickData[] = candles.map((c) => ({
-      time: c.time as any,
+      time: c.time as UTCTimestamp,
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
     }))
     candleRef.current.setData(cd)
+
+    const closes = candles.map((c) => c.close)
+    ema3Ref.current?.setData(toLineData(candles, emaSeries(closes, 3)))
+    ema8Ref.current?.setData(toLineData(candles, emaSeries(closes, 8)))
+    ema50Ref.current?.setData(toLineData(candles, emaSeries(closes, 50)))
+
     chartRef.current?.timeScale().fitContent()
   }, [candles])
-
-  useEffect(() => {
-    if (!ema3Ref.current || !ema3 || candles.length === 0) return
-    const data: LineData[] = candles.map((c) => ({
-      time: c.time as any,
-      value: ema3,
-    }))
-    ema3Ref.current.setData(data)
-  }, [candles, ema3])
-
-  useEffect(() => {
-    if (!ema8Ref.current || !ema8 || candles.length === 0) return
-    const data: LineData[] = candles.map((c) => ({
-      time: c.time as any,
-      value: ema8,
-    }))
-    ema8Ref.current.setData(data)
-  }, [candles, ema8])
-
-  useEffect(() => {
-    if (!ema50Ref.current || !ema50 || candles.length === 0) return
-    const data: LineData[] = candles.map((c) => ({
-      time: c.time as any,
-      value: ema50,
-    }))
-    ema50Ref.current.setData(data)
-  }, [candles, ema50])
 
   return (
     <div

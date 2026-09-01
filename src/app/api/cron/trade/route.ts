@@ -89,6 +89,7 @@ export async function POST() {
     } catch (err: any) {
       errors.push(`Trend calculation failed: ${err.message}`)
     }
+    state.trend = trend
 
     const signal = generateSignal(indicators, trend)
     state.lastSignal = signal

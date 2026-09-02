@@ -9,17 +9,16 @@ export function generateSignal(indicators: Indicators, trend: TrendDirection = '
   const emaGap = ema8 === 0 ? 0 : Math.abs(ema3 - ema8) / ema8
   let reason = ''
 
-  const bullish = ema3 > ema8 && volatilityRatio >= 0.4 && adx >= 18 && rsi < 70
-  const bearish = ema3 < ema8 && volatilityRatio >= 0.4 && adx >= 18 && rsi > 30
+  const hasMomentum = volatilityRatio >= 0.4 && adx >= 14 && rsi > 30 && rsi < 70
 
-  if (bullish && trend === 'UP') {
+  if (hasMomentum && trend === 'UP') {
     action = 'BUY'
     confidence = Math.min(1, emaGap * 5 + adx / 100)
-    reason = `Bullish: EMA3>EMA8, trend UP, ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}`
-  } else if (bearish && trend === 'DOWN') {
+    reason = `Momentum UP: ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}, trend UP`
+  } else if (hasMomentum && trend === 'DOWN') {
     action = 'SELL'
     confidence = Math.min(1, emaGap * 5 + adx / 100)
-    reason = `Bearish: EMA3<EMA8, trend DOWN, ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}`
+    reason = `Momentum DOWN: ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}, trend DOWN`
   } else {
     const trendNote = trend === 'UP' ? 'trend UP' : trend === 'DOWN' ? 'trend DOWN' : 'trend SIDEWAYS'
     reason = `HOLD: no aligned signal (trend=${trendNote}, ADX=${adx.toFixed(1)}, RSI=${rsi.toFixed(1)}, +DI=${plusDi.toFixed(1)}, −DI=${minusDi.toFixed(1)})`

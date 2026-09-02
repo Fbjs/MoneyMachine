@@ -32,6 +32,7 @@ export interface Signal {
   confidence: number
   indicators: Indicators
   timestamp: number
+  reason: string
 }
 
 export interface Trade {

@@ -49,6 +49,9 @@ export default function StrategyPanel({ lastSignal, indicators, config, trend, o
               {(lastSignal.confidence * 100).toFixed(1)}%
             </span>
           </div>
+          {lastSignal.reason && (
+            <div className="mt-2 text-xs text-zinc-500 leading-relaxed">{lastSignal.reason}</div>
+          )}
         </div>
       ) : (
         <div className="p-3 rounded-lg border border-zinc-700 bg-zinc-800/50 mb-3">

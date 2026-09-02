@@ -6,12 +6,11 @@ import {
   createChart,
   CandlestickSeries,
   LineSeries,
-  LineStyle,
+  AreaSeries,
   createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
-  type IPriceLine,
   type CandlestickData,
   type LineData,
   type UTCTimestamp,
@@ -57,9 +56,8 @@ export default function Chart({ candles, position }: Props) {
   const ema3Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ema8Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ema50Ref = useRef<ISeriesApi<'Line'> | null>(null)
-  const entryLineRef = useRef<IPriceLine | null>(null)
-  const slLineRef = useRef<IPriceLine | null>(null)
-  const tpLineRef = useRef<IPriceLine | null>(null)
+  const tpAreaRef = useRef<ISeriesApi<'Area'> | null>(null)
+  const slAreaRef = useRef<ISeriesApi<'Area'> | null>(null)
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
 
   useEffect(() => {
@@ -101,6 +99,28 @@ export default function Chart({ candles, position }: Props) {
     candleRef.current = candleSeries
     markersRef.current = createSeriesMarkers(candleSeries, [])
 
+    const tpAreaSeries = chart.addSeries(AreaSeries, {
+      topColor: 'rgba(34,197,94,0.30)',
+      bottomColor: 'rgba(34,197,94,0.03)',
+      lineColor: '#22c55e',
+      lineWidth: 1,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    })
+    tpAreaRef.current = tpAreaSeries
+
+    const slAreaSeries = chart.addSeries(AreaSeries, {
+      topColor: 'rgba(239,68,68,0.03)',
+      bottomColor: 'rgba(239,68,68,0.30)',
+      lineColor: '#ef4444',
+      lineWidth: 1,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    })
+    slAreaRef.current = slAreaSeries
+
     const ema3Series = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 })
     const ema8Series = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 })
     const ema50Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2 })
@@ -130,51 +150,57 @@ export default function Chart({ candles, position }: Props) {
     ema8Ref.current?.setData(toLineData(candles, emaSeries(closes, 8)))
     ema50Ref.current?.setData(toLineData(candles, emaSeries(closes, 50)))
 
+    if (position && tpAreaRef.current && slAreaRef.current) {
+      const isLong = LONG_SIDES.includes(position.side)
+      const entryT = Math.floor(position.openedAt / 1000) as UTCTimestamp
+      const lastT = candles[candles.length - 1].time as UTCTimestamp
+      const entry = position.entryPrice
+
+      if (isLong) {
+        tpAreaRef.current.setData([
+          { time: entryT, value: entry },
+          { time: lastT, value: entry },
+          { time: lastT, value: position.takeProfitPrice ?? entry },
+          { time: entryT, value: position.takeProfitPrice ?? entry },
+        ])
+        slAreaRef.current.setData([
+          { time: entryT, value: entry },
+          { time: lastT, value: entry },
+          { time: lastT, value: position.stopLossPrice ?? entry },
+          { time: entryT, value: position.stopLossPrice ?? entry },
+        ])
+      } else {
+        tpAreaRef.current.setData([
+          { time: entryT, value: entry },
+          { time: lastT, value: entry },
+          { time: lastT, value: position.takeProfitPrice ?? entry },
+          { time: entryT, value: position.takeProfitPrice ?? entry },
+        ])
+        slAreaRef.current.setData([
+          { time: entryT, value: entry },
+          { time: lastT, value: entry },
+          { time: lastT, value: position.stopLossPrice ?? entry },
+          { time: entryT, value: position.stopLossPrice ?? entry },
+        ])
+      }
+    } else {
+      tpAreaRef.current?.setData([])
+      slAreaRef.current?.setData([])
+    }
+
     chartRef.current?.timeScale().fitContent()
-  }, [candles])
+  }, [candles, position])
 
   useEffect(() => {
     if (!candleRef.current) return
-
-    if (entryLineRef.current) { candleRef.current.removePriceLine(entryLineRef.current); entryLineRef.current = null }
-    if (slLineRef.current) { candleRef.current.removePriceLine(slLineRef.current); slLineRef.current = null }
-    if (tpLineRef.current) { candleRef.current.removePriceLine(tpLineRef.current); tpLineRef.current = null }
     markersRef.current?.setMarkers([])
 
     if (!position) return
 
     const isLong = LONG_SIDES.includes(position.side)
     const markerColor = isLong ? '#22c55e' : '#ef4444'
-
-    entryLineRef.current = candleRef.current.createPriceLine({
-      price: position.entryPrice,
-      color: '#3b82f6',
-      lineWidth: 2,
-      lineStyle: LineStyle.Solid,
-      title: `ENTRY $${position.entryPrice.toFixed(0)}`,
-    })
-
-    if (position.stopLossPrice) {
-      slLineRef.current = candleRef.current.createPriceLine({
-        price: position.stopLossPrice,
-        color: '#ef4444',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        title: `SL $${position.stopLossPrice.toFixed(0)}`,
-      })
-    }
-
-    if (position.takeProfitPrice) {
-      tpLineRef.current = candleRef.current.createPriceLine({
-        price: position.takeProfitPrice,
-        color: '#22c55e',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        title: `TP $${position.takeProfitPrice.toFixed(0)}`,
-      })
-    }
-
     const entryTime = Math.floor(position.openedAt / 1000) as UTCTimestamp
+
     markersRef.current?.setMarkers([{
       time: entryTime,
       position: 'belowBar',

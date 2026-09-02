@@ -22,7 +22,7 @@ export function aiFilter(signal: Signal): AiFilterResult {
   )
 
   return {
-    passed: score >= 0.40,
+    passed: score >= 0.35,
     score: parseFloat(score.toFixed(4)),
   }
 }

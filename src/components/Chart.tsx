@@ -1,20 +1,26 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import type { Candle } from '@/types'
+import type { Candle, Trade } from '@/types'
 import {
   createChart,
   CandlestickSeries,
   LineSeries,
+  LineStyle,
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type IPriceLine,
   type CandlestickData,
   type LineData,
   type UTCTimestamp,
+  type Time,
 } from 'lightweight-charts'
 
 interface Props {
   candles: Candle[]
+  position: Trade | null
 }
 
 function emaSeries(data: number[], period: number): (number | null)[] {
@@ -42,13 +48,19 @@ function toLineData(candles: Candle[], values: (number | null)[]): LineData[] {
   return out
 }
 
-export default function Chart({ candles }: Props) {
+const LONG_SIDES = ['BUY', 'CALL', 'LONG']
+
+export default function Chart({ candles, position }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const ema3Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ema8Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ema50Ref = useRef<ISeriesApi<'Line'> | null>(null)
+  const entryLineRef = useRef<IPriceLine | null>(null)
+  const slLineRef = useRef<IPriceLine | null>(null)
+  const tpLineRef = useRef<IPriceLine | null>(null)
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -87,6 +99,7 @@ export default function Chart({ candles }: Props) {
       wickUpColor: '#22c55e',
     })
     candleRef.current = candleSeries
+    markersRef.current = createSeriesMarkers(candleSeries, [])
 
     const ema3Series = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 })
     const ema8Series = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 })
@@ -119,6 +132,57 @@ export default function Chart({ candles }: Props) {
 
     chartRef.current?.timeScale().fitContent()
   }, [candles])
+
+  useEffect(() => {
+    if (!candleRef.current) return
+
+    if (entryLineRef.current) { candleRef.current.removePriceLine(entryLineRef.current); entryLineRef.current = null }
+    if (slLineRef.current) { candleRef.current.removePriceLine(slLineRef.current); slLineRef.current = null }
+    if (tpLineRef.current) { candleRef.current.removePriceLine(tpLineRef.current); tpLineRef.current = null }
+    markersRef.current?.setMarkers([])
+
+    if (!position) return
+
+    const isLong = LONG_SIDES.includes(position.side)
+    const markerColor = isLong ? '#22c55e' : '#ef4444'
+
+    entryLineRef.current = candleRef.current.createPriceLine({
+      price: position.entryPrice,
+      color: '#3b82f6',
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
+      title: `ENTRY $${position.entryPrice.toFixed(0)}`,
+    })
+
+    if (position.stopLossPrice) {
+      slLineRef.current = candleRef.current.createPriceLine({
+        price: position.stopLossPrice,
+        color: '#ef4444',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        title: `SL $${position.stopLossPrice.toFixed(0)}`,
+      })
+    }
+
+    if (position.takeProfitPrice) {
+      tpLineRef.current = candleRef.current.createPriceLine({
+        price: position.takeProfitPrice,
+        color: '#22c55e',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        title: `TP $${position.takeProfitPrice.toFixed(0)}`,
+      })
+    }
+
+    const entryTime = Math.floor(position.openedAt / 1000) as UTCTimestamp
+    markersRef.current?.setMarkers([{
+      time: entryTime,
+      position: 'belowBar',
+      color: markerColor,
+      shape: isLong ? 'arrowUp' : 'arrowDown',
+      text: position.side,
+    }])
+  }, [position])
 
   return (
     <div

@@ -61,7 +61,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-3 bg-zinc-900 rounded-lg p-3 border border-zinc-800">
-              <Chart candles={data.candles} />
+              <Chart candles={data.candles} position={data.openPosition} />
             </div>
 
             <div className="lg:col-span-1 space-y-4">

@@ -74,6 +74,7 @@ export function createInitialState(): BotState {
       cooldownEnd: 0, tradingDisabled: false,
     },
     lastCronRun: null,
+    lastEvaluatedCandleTime: null,
     errors: [],
   }
 }

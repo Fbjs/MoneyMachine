@@ -178,7 +178,7 @@ Vercel Hobby plan no permite cron jobs frecuentes, por lo que se usa un servicio
 Sin el header correcto el endpoint responde `401`. Si un ciclo ya está corriendo, una segunda llamada responde `409` (lock en Redis con TTL de 70 s).
 
 El endpoint `/api/cron/trade` ejecuta el ciclo completo cada vez que es llamado:
-1. Obtiene velas de Binance REST (timeframe de trading + timeframe de tendencia)
+1. Obtiene velas de Binance REST (timeframe de trading + timeframe de tendencia). Las señales usan **solo velas cerradas** y una entrada solo se evalúa en el primer ciclo tras el cierre de una vela nueva (igual que el backtest); SL/TP se revisan con el precio en vivo en cada ciclo
 2. Calcula EMA3/8/50, ATR, ADX, RSI, +DI/−DI
 3. Calcula la tendencia (EMA fast/slow en `TREND_TIMEFRAME`)
 4. Gestiona la posición abierta: SL/TP por ATR, trailing y cambio de régimen

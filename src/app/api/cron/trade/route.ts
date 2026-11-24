@@ -3,7 +3,7 @@ import { getState, setState, createInitialState, acquireCycleLock, releaseCycleL
 import { getConfig, getEnv } from '@/lib/config'
 import { closeSpotLive } from '@/lib/execution/spot-executor'
 import { binanceClient } from '@/lib/binance/client'
-import { parseKline } from '@/lib/binance/types'
+import { parseKline, intervalToSeconds, closedCandles } from '@/lib/binance/types'
 import { computeIndicators } from '@/lib/strategy/indicators'
 import { generateSignal } from '@/lib/strategy/signal-engine'
 import { computeTrend } from '@/lib/strategy/trend'
@@ -118,13 +118,22 @@ async function runCycle() {
       }
     }
 
-    const klines = await binanceClient.getKlines(config.symbol, config.timeframe, 200)
+    // 201 = 200 closed candles for indicators + the still-forming one (live price / chart).
+    const klines = await binanceClient.getKlines(config.symbol, config.timeframe, 201)
     const candles = klines.map(parseKline)
     state.price = candles[candles.length - 1].close
     state.candles = candles
     state.lastCronRun = Date.now()
 
-    const indicators = computeIndicators(candles)
+    // Signals use closed candles only, exactly like the backtest. Exits (SL/TP) still use the live price.
+    const closed = closedCandles(candles, intervalToSeconds(config.timeframe))
+    const lastClosedTime = closed.length > 0 ? closed[closed.length - 1].time : null
+    // Entries are only evaluated on the first cycle that sees a newly closed candle (= backtest bar close).
+    const isNewCandle = lastClosedTime !== null && lastClosedTime !== state.lastEvaluatedCandleTime
+    state.lastEvaluatedCandleTime = lastClosedTime
+    result.newCandle = isNewCandle
+
+    const indicators = computeIndicators(closed)
     if (!indicators) {
       errors.push('Not enough data for indicators')
       state.errors = errors
@@ -135,9 +144,11 @@ async function runCycle() {
 
     let trend: TrendDirection = 'SIDEWAYS'
     try {
-      const trendLimit = Math.min(config.trendEmaSlow + 50, 1000)
+      // Same warmup as the backtest (2x slow EMA) so both compute the same trend values.
+      const trendLimit = Math.min(config.trendEmaSlow * 2 + 50, 1000)
       const trendKlines = await binanceClient.getKlines(config.symbol, config.trendTimeframe, trendLimit)
-      trend = computeTrend(trendKlines.map(parseKline), config.trendEmaFast, config.trendEmaSlow)
+      const trendClosed = closedCandles(trendKlines.map(parseKline), intervalToSeconds(config.trendTimeframe))
+      trend = computeTrend(trendClosed, config.trendEmaFast, config.trendEmaSlow)
     } catch (err: any) {
       errors.push(`Trend calculation failed: ${err.message}`)
     }
@@ -166,6 +177,9 @@ async function runCycle() {
         if (isLong && state.price - trail > sl) sl = state.price - trail
         if (isShort && state.price + trail < sl) sl = state.price + trail
       }
+
+      // Persist the ratcheted trailing stop so it never moves back.
+      if (sl > 0) pos.stopLossPrice = sl
 
       const hitSl = sl > 0 && (isLong ? state.price <= sl : state.price >= sl)
       const hitTp = tp > 0 && (isLong ? state.price >= tp : state.price <= tp)
@@ -242,7 +256,9 @@ async function runCycle() {
         }
         perf.winRate = perf.totalTrades > 0 ? perf.wins / perf.totalTrades : 0
         perf.totalPnl += netPnl
-        perf.profitFactor = perf.avgLoss > 0 ? perf.avgWin / perf.avgLoss : 0
+        // Profit factor = gross profit / gross loss.
+        const grossLoss = perf.avgLoss * perf.losses
+        perf.profitFactor = grossLoss > 0 ? (perf.avgWin * perf.wins) / grossLoss : 0
         perf.expectancy = (perf.winRate * perf.avgWin) - ((1 - perf.winRate) * perf.avgLoss)
 
         riskMgr.onTradeResult(state.trades[state.trades.length - 1], balanceBeforeTrade)
@@ -263,6 +279,15 @@ async function runCycle() {
       await setState(state)
       result.signal = signal.action
       result.trend = trend
+      return NextResponse.json({ ...result, errors })
+    }
+
+    if (!isNewCandle) {
+      result.signal = config.mode === 'spot' && signal.action === 'SELL' ? 'HOLD' : signal.action
+      result.reason = 'Waiting for next candle close'
+      result.trend = trend
+      state.errors = errors
+      await setState(state)
       return NextResponse.json({ ...result, errors })
     }
 

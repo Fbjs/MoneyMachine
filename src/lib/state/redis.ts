@@ -77,3 +77,36 @@ export function createInitialState(): BotState {
     errors: [],
   }
 }
+
+const LOCK_KEY = 'money_machine:cron_lock'
+let memoryLock: { token: string; expiresAt: number } | null = null
+
+/**
+ * Acquire an exclusive lock for a trading cycle. Returns a token to release it,
+ * or null if another cycle holds it. The TTL guarantees release if the function dies.
+ */
+export async function acquireCycleLock(ttlSeconds: number): Promise<string | null> {
+  const token = crypto.randomUUID()
+  const redis = getRedis()
+  if (redis) {
+    const ok = await redis.set(LOCK_KEY, token, { nx: true, ex: ttlSeconds })
+    return ok === 'OK' ? token : null
+  }
+  if (memoryLock && memoryLock.expiresAt > Date.now()) return null
+  memoryLock = { token, expiresAt: Date.now() + ttlSeconds * 1000 }
+  return token
+}
+
+export async function releaseCycleLock(token: string): Promise<void> {
+  const redis = getRedis()
+  if (redis) {
+    // Delete only if we still own the lock (atomic compare-and-delete).
+    await redis.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      [LOCK_KEY],
+      [token],
+    )
+    return
+  }
+  if (memoryLock?.token === token) memoryLock = null
+}

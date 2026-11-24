@@ -26,6 +26,7 @@ const envSchema = z.object({
   TRAILING_ATR_MULT: z.string().default('0').transform(v => parseFloat(v)),
   DAILY_STOP_LOSS_PCT: z.string().default('1.0').transform(v => parseFloat(v)),
   TRADE_ACTIVE_HOURS: z.string().default(''),
+  CRON_SECRET: z.string().default(''),
   UPSTASH_REDIS_URL: z.string().default(''),
   UPSTASH_REDIS_TOKEN: z.string().default(''),
   TELEGRAM_BOT_TOKEN: z.string().default(''),

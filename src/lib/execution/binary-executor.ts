@@ -11,6 +11,7 @@ export class BinaryExecutor implements Executor {
     signal: { action: string; confidence: number },
     config: BotConfig,
     balance: AccountBalance,
+    stake: number,
   ): Promise<ExecuteResult> {
     if (signal.action === 'HOLD') {
       return { success: false, error: 'No signal' }
@@ -26,7 +27,7 @@ export class BinaryExecutor implements Executor {
       entryPrice: 0,
       exitPrice: null,
       quantity: 0,
-      stake: 0,
+      stake,
       pnl: null,
       grossPnl: null,
       fees: null,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getState, setState, createInitialState } from '@/lib/state/redis'
-import { getConfig } from '@/lib/config'
+import { getState, setState, createInitialState, acquireCycleLock, releaseCycleLock } from '@/lib/state/redis'
+import { getConfig, getEnv } from '@/lib/config'
+import { closeSpotLive } from '@/lib/execution/spot-executor'
 import { binanceClient } from '@/lib/binance/client'
 import { parseKline } from '@/lib/binance/types'
 import { computeIndicators } from '@/lib/strategy/indicators'
@@ -14,6 +15,13 @@ import type { TrendDirection, Trade } from '@/types'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+// Slightly above maxDuration so a cycle that dies mid-way can't hold the lock forever.
+const LOCK_TTL_SECONDS = 70
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
 
 const LONG_SIDES = ['BUY', 'CALL', 'LONG']
 const SHORT_SIDES = ['SELL', 'PUT', 'SHORT']
@@ -35,7 +43,51 @@ function isActiveHours(hoursSpec: string): boolean {
   return false
 }
 
-export async function POST() {
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const ab = enc.encode(a)
+  const bb = enc.encode(b)
+  let diff = ab.length ^ bb.length
+  for (let i = 0; i < Math.max(ab.length, bb.length); i++) {
+    diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0)
+  }
+  return diff === 0
+}
+
+function isAuthorized(request: Request): boolean {
+  const secret = getEnv().CRON_SECRET
+  if (!secret) return false
+  const header = request.headers.get('authorization') ?? ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : ''
+  return token.length > 0 && timingSafeEqual(token, secret)
+}
+
+export async function POST(request: Request) {
+  if (!getEnv().CRON_SECRET) {
+    return NextResponse.json({ status: 'error', errors: ['CRON_SECRET not configured'] }, { status: 500 })
+  }
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ status: 'unauthorized' }, { status: 401 })
+  }
+
+  let lockToken: string | null
+  try {
+    lockToken = await acquireCycleLock(LOCK_TTL_SECONDS)
+  } catch (err) {
+    return NextResponse.json({ status: 'error', errors: [`Lock unavailable: ${errMsg(err)}`] }, { status: 503 })
+  }
+  if (!lockToken) {
+    return NextResponse.json({ status: 'skipped', reason: 'Another cycle is running' }, { status: 409 })
+  }
+
+  try {
+    return await runCycle()
+  } finally {
+    await releaseCycleLock(lockToken).catch(err => console.error('Failed to release cycle lock:', err))
+  }
+}
+
+async function runCycle() {
   const config = getConfig()
   let state = await getState()
   if (!state) {
@@ -119,28 +171,59 @@ export async function POST() {
       const hitTp = tp > 0 && (isLong ? state.price >= tp : state.price <= tp)
       const trendReversed = (isLong && trend === 'DOWN') || (isShort && trend === 'UP')
 
-      if (hitSl || hitTp || trendReversed) {
-        if (!config.paper && config.mode === 'spot' && binanceClient.hasCredentials() && pos.side === 'BUY') {
-          try {
-            await binanceClient.marketSell(config.symbol, pos.quantity.toFixed(6))
-          } catch (err: any) {
-            errors.push(`Close order failed: ${err.message}`)
+      const isLiveSpot = !config.paper && config.mode === 'spot' && binanceClient.hasCredentials() && pos.side === 'BUY'
+      let closeConfirmed = true
+      let exitPrice = exit.exitPrice
+      let grossPnl = exit.pnl
+
+      if ((hitSl || hitTp || trendReversed) && isLiveSpot) {
+        try {
+          const closed = await closeSpotLive(pos)
+          if (closed.status === 'filled') {
+            exitPrice = closed.exitPrice
+            grossPnl = (closed.exitPrice - pos.entryPrice) * closed.quantity
+            if (closed.leftover > 0) {
+              errors.push(`Close left ${closed.leftover} unsold (below LOT_SIZE step)`)
+            }
+          } else {
+            // Nothing sellable on the exchange (sold manually or dust): drop it from state.
+            errors.push(`Position not found on exchange (free=${closed.free}); closing in state at market price`)
           }
+        } catch (err) {
+          // Keep the position open so the next cycle retries the sell.
+          closeConfirmed = false
+          errors.push(`Close order failed, position kept open: ${errMsg(err)}`)
         }
+      }
 
+      if ((hitSl || hitTp || trendReversed) && closeConfirmed) {
+        const balanceBeforeTrade = state.balance.total
         const fees = pos.stake * config.feeRate * 2
-        const netPnl = exit.pnl - fees
+        const netPnl = grossPnl - fees
 
-        pos.exitPrice = exit.exitPrice
+        pos.exitPrice = exitPrice
         pos.pnl = netPnl
-        pos.grossPnl = exit.pnl
+        pos.grossPnl = grossPnl
         pos.fees = fees
         pos.status = netPnl >= 0 ? 'WIN' : 'LOSS'
         pos.closedAt = Date.now()
         pos.stopLossPrice = sl > 0 ? sl : pos.stopLossPrice
 
-        state.balance.total += netPnl
-        state.balance.available = state.balance.total
+        if (isLiveSpot) {
+          // Live: the exchange is the source of truth for the balance.
+          try {
+            const usdt = await binanceClient.getFreeBalance('USDT')
+            state.balance.total = usdt
+            state.balance.available = usdt
+          } catch (err) {
+            state.balance.total += pos.stake + netPnl
+            state.balance.available = state.balance.total
+            errors.push(`Balance resync after close failed: ${errMsg(err)}`)
+          }
+        } else {
+          state.balance.total += netPnl
+          state.balance.available = state.balance.total
+        }
         state.balance.inPosition = 0
 
         state.trades.push(pos)
@@ -162,13 +245,13 @@ export async function POST() {
         perf.profitFactor = perf.avgLoss > 0 ? perf.avgWin / perf.avgLoss : 0
         perf.expectancy = (perf.winRate * perf.avgWin) - ((1 - perf.winRate) * perf.avgLoss)
 
-        riskMgr.onTradeResult(state.trades[state.trades.length - 1])
+        riskMgr.onTradeResult(state.trades[state.trades.length - 1], balanceBeforeTrade)
         state.risk = riskMgr.getMetrics()
 
         const exitReason = hitSl ? 'SL' : hitTp ? 'TP' : 'TREND'
         await sendTelegram(formatTradeMessage(
           'TRADE CLOSED', config.symbol,
-          `${pos.side} (${exitReason})`, 0, exit.exitPrice, 0,
+          `${pos.side} (${exitReason})`, 0, exitPrice, 0,
           config.mode, config.paper, netPnl,
         ))
       }
@@ -246,34 +329,36 @@ export async function POST() {
         { action: signal.action, confidence: signal.confidence },
         config,
         state.balance,
+        auth.stake,
       )
 
       if (executeResult.success && executeResult.trade) {
         const trade: Trade = executeResult.trade
-        trade.stake = auth.stake
-        trade.entryPrice = state.price
+        // Executors that report real fills (live spot) set these; paper ones fall back to the last price.
+        if (!trade.stake) trade.stake = auth.stake
+        if (!trade.entryPrice) trade.entryPrice = state.price
         trade.aiScore = filterResult.score
         if (!trade.quantity || trade.quantity === 0) {
-          trade.quantity = state.price > 0 ? auth.stake / state.price : 0
+          trade.quantity = trade.entryPrice > 0 ? trade.stake / trade.entryPrice : 0
         }
 
         if (indicators.atr > 0) {
           const isLong = LONG_SIDES.includes(trade.side)
           trade.stopLossPrice = isLong
-            ? state.price - config.slAtrMult * indicators.atr
-            : state.price + config.slAtrMult * indicators.atr
+            ? trade.entryPrice - config.slAtrMult * indicators.atr
+            : trade.entryPrice + config.slAtrMult * indicators.atr
           trade.takeProfitPrice = isLong
-            ? state.price + config.tpAtrMult * indicators.atr
-            : state.price - config.tpAtrMult * indicators.atr
+            ? trade.entryPrice + config.tpAtrMult * indicators.atr
+            : trade.entryPrice - config.tpAtrMult * indicators.atr
         }
 
         state.openPosition = trade
-        state.balance.available = state.balance.total - auth.stake
-        state.balance.inPosition = auth.stake
+        state.balance.available = state.balance.total - trade.stake
+        state.balance.inPosition = trade.stake
 
         await sendTelegram(formatTradeMessage(
           'NEW TRADE', config.symbol,
-          trade.side, auth.stake, state.price,
+          trade.side, trade.stake, trade.entryPrice,
           signal.confidence, config.mode, config.paper,
         ))
       } else {

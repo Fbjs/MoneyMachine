@@ -117,6 +117,9 @@ TRAILING_ATR_MULT=0            # trailing stop (0 = desactivado)
 DAILY_STOP_LOSS_PCT=1.0        # stop diario de pérdidas (%)
 TRADE_ACTIVE_HOURS=            # horario activo UTC (ej. "08-20"). Vacío = 24h
 
+# Seguridad del cron (OBLIGATORIO: sin esto /api/cron/trade responde 500)
+CRON_SECRET=                   # genera uno con: openssl rand -hex 32
+
 # Upstash Redis (necesario para estado persistente)
 UPSTASH_REDIS_URL=
 UPSTASH_REDIS_TOKEN=
@@ -170,6 +173,9 @@ Vercel Hobby plan no permite cron jobs frecuentes, por lo que se usa un servicio
    - **Method**: `POST`
    - **Interval**: cada `1 minuto`
    - **Request Body**: (vacío)
+   - **Headers**: `Authorization: Bearer <CRON_SECRET>`
+
+Sin el header correcto el endpoint responde `401`. Si un ciclo ya está corriendo, una segunda llamada responde `409` (lock en Redis con TTL de 70 s).
 
 El endpoint `/api/cron/trade` ejecuta el ciclo completo cada vez que es llamado:
 1. Obtiene velas de Binance REST (timeframe de trading + timeframe de tendencia)

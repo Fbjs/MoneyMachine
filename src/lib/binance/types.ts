@@ -52,3 +52,17 @@ export function parseKline(k: any[]): Candle {
     volume: parseFloat(k[5]),
   }
 }
+
+const INTERVAL_UNITS: Record<string, number> = { m: 60, h: 3600, d: 86400, w: 604800, M: 2592000 }
+
+/** Binance interval string ("1m", "4h", "1d", ...) to seconds. */
+export function intervalToSeconds(interval: string): number {
+  const match = /^(\d+)([mhdwM])$/.exec(interval)
+  if (!match) throw new Error(`Unsupported interval: ${interval}`)
+  return parseInt(match[1], 10) * INTERVAL_UNITS[match[2]]
+}
+
+/** Drop candles that have not closed yet (Binance returns the forming candle last). */
+export function closedCandles(candles: Candle[], intervalSec: number, nowMs = Date.now()): Candle[] {
+  return candles.filter(c => (c.time + intervalSec) * 1000 <= nowMs)
+}

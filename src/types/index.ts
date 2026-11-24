@@ -128,5 +128,7 @@ export interface BotState {
   performance: Performance
   risk: RiskMetrics
   lastCronRun: number | null
+  /** Open time (s) of the last closed candle seen by the cron; entries only fire on a new one. */
+  lastEvaluatedCandleTime?: number | null
   errors: string[]
 }

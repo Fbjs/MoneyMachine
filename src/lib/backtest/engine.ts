@@ -278,7 +278,8 @@ export function runBacktest(
       wins,
       losses,
       winRate: totalTrades > 0 ? wins / totalTrades : 0,
-      profitFactor: avgLoss > 0 ? avgWin / avgLoss : 0,
+      // Gross profit / gross loss.
+      profitFactor: losses > 0 && avgLoss > 0 ? (avgWin * wins) / (avgLoss * losses) : 0,
       totalPnl: parseFloat(totalPnl.toFixed(4)),
       totalFees: parseFloat(totalFees.toFixed(4)),
       maxDrawdownPct: parseFloat(maxDrawdownPct.toFixed(3)),

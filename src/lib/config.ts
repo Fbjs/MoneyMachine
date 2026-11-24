@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { BotConfig, BotMode, StakeMode } from '@/types'
+import type { BotConfig, BotMode, StakeMode, SignalRule } from '@/types'
 
 const envSchema = z.object({
   BOT_MODE: z.enum(['binary', 'spot', 'futures']).default('binary'),
@@ -26,6 +26,8 @@ const envSchema = z.object({
   TRAILING_ATR_MULT: z.string().default('0').transform(v => parseFloat(v)),
   DAILY_STOP_LOSS_PCT: z.string().default('1.0').transform(v => parseFloat(v)),
   TRADE_ACTIVE_HOURS: z.string().default(''),
+  SIGNAL_RULE: z.enum(['momentum', 'adx_di']).default('momentum'),
+  SIGNAL_ADX_MIN: z.string().default('30').transform(v => parseFloat(v)),
   CRON_SECRET: z.string().default(''),
   UPSTASH_REDIS_URL: z.string().default(''),
   UPSTASH_REDIS_TOKEN: z.string().default(''),
@@ -69,6 +71,8 @@ export function getConfig(): BotConfig {
     trailingAtrMult: env.TRAILING_ATR_MULT,
     dailyStopLossPct: env.DAILY_STOP_LOSS_PCT,
     tradeActiveHours: env.TRADE_ACTIVE_HOURS,
+    signalRule: env.SIGNAL_RULE as SignalRule,
+    signalAdxMin: env.SIGNAL_ADX_MIN,
   }
 }
 

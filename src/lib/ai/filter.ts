@@ -1,4 +1,4 @@
-import type { Signal } from '@/types'
+import type { Signal, SignalRule } from '@/types'
 
 export interface AiFilterResult {
   passed: boolean
@@ -25,4 +25,10 @@ export function aiFilter(signal: Signal): AiFilterResult {
     passed: score >= 0.35,
     score: parseFloat(score.toFixed(4)),
   }
+}
+
+/** Apply the confidence filter only for rules that were designed with it (legacy momentum). */
+export function filterForRule(signal: Signal, rule: SignalRule): AiFilterResult {
+  if (rule === 'momentum') return aiFilter(signal)
+  return { passed: true, score: signal.confidence }
 }

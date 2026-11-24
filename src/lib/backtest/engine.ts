@@ -1,7 +1,7 @@
-import type { Candle, BotConfig, TrendDirection } from '@/types'
+import type { Candle, BotConfig, TrendDirection, Indicators, SignalAction } from '@/types'
 import { computeIndicators, ema } from '@/lib/strategy/indicators'
 import { generateSignal } from '@/lib/strategy/signal-engine'
-import { aiFilter } from '@/lib/ai/filter'
+import { filterForRule } from '@/lib/ai/filter'
 
 const LONG_SIDES = ['BUY', 'CALL', 'LONG']
 const SHORT_SIDES = ['SELL', 'PUT', 'SHORT']
@@ -62,6 +62,11 @@ export interface BacktestOptions {
   /** Duration of one trend (higher timeframe) candle, in seconds. */
   trendIntervalSec: number
   initialBalance?: number
+  /**
+   * Optional entry rule replacing generateSignal + aiFilter (used for strategy research).
+   * Return null (or HOLD) to stay flat.
+   */
+  entryRule?: (ctx: { indicators: Indicators; trend: TrendDirection; window: Candle[] }) => { action: SignalAction; score: number } | null
 }
 
 interface Position {
@@ -228,12 +233,22 @@ export function runBacktest(
     }
 
     if (!position) {
-      const signal = generateSignal(indicators, dir)
-      if (signal.action === 'HOLD') continue
-      if (config.mode === 'spot' && signal.action === 'SELL') continue
-
-      const filterResult = aiFilter(signal)
-      if (!filterResult.passed) continue
+      let action: SignalAction
+      let score: number
+      if (options.entryRule) {
+        const decision = options.entryRule({ indicators, trend: dir, window })
+        if (!decision || decision.action === 'HOLD') continue
+        action = decision.action
+        score = decision.score
+      } else {
+        const signal = generateSignal(indicators, dir, { rule: config.signalRule, adxMin: config.signalAdxMin })
+        if (signal.action === 'HOLD') continue
+        const filterResult = filterForRule(signal, config.signalRule)
+        if (!filterResult.passed) continue
+        action = signal.action
+        score = filterResult.score
+      }
+      if (config.mode === 'spot' && action === 'SELL') continue
 
       if (price > 0 && indicators.atr > 0) {
         const expectedMovePct = indicators.atr / price
@@ -244,7 +259,7 @@ export function runBacktest(
       const stake = stakeFor(balance)
       if (stake <= 0) continue
 
-      const side = signal.action === 'BUY' ? 'BUY' : 'SELL'
+      const side = action === 'BUY' ? 'BUY' : 'SELL'
       const isLong = side === 'BUY'
       const quantity = price > 0 ? stake / price : 0
 
@@ -255,7 +270,7 @@ export function runBacktest(
         quantity,
         stopLossPrice: isLong ? price - config.slAtrMult * indicators.atr : price + config.slAtrMult * indicators.atr,
         takeProfitPrice: isLong ? price + config.tpAtrMult * indicators.atr : price - config.tpAtrMult * indicators.atr,
-        aiScore: filterResult.score,
+        aiScore: score,
         openedAt: candle.time,
         openedIndex: i,
       }

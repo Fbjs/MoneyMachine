@@ -16,7 +16,7 @@ interface ReplayTrade {
   takeProfit: number | null
   exitTime: number
   exitPrice: number
-  exitReason: 'SL' | 'TP' | 'TREND'
+  exitReason: 'SL' | 'TP' | 'TREND' | 'SIGNAL'
   stake: number
   fees: number
   pnl: number
@@ -104,7 +104,12 @@ export default function ReplayPage() {
           <div className="text-xs text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
             <span>{fmtDate(data.period.from)} → {fmtDate(data.period.to)}</span>
             <span>{String(data.config.symbol)} · {String(data.config.mode)} · {String(data.config.timeframe)}/{String(data.config.trendTimeframe)}</span>
-            <span>regla {String(data.config.signalRule)} (ADX ≥ {String(data.config.signalAdxMin)}) · SL {String(data.config.slAtrMult)} / TP {String(data.config.tpAtrMult)} ATR</span>
+            <span>
+              regla {String(data.config.signalRule)}
+              {data.config.signalRule === 'sma_trend'
+                ? ` (SMA${String(data.config.signalSmaPeriod ?? 50)}, sale con la señal contraria)`
+                : ` (ADX ≥ ${String(data.config.signalAdxMin)}) · SL ${String(data.config.slAtrMult)} / TP ${String(data.config.tpAtrMult)} ATR`}
+            </span>
             <span>fee {(Number(data.config.feeRate) * 100).toFixed(2)}% · precio cada {data.period.granularity}</span>
             <span className="text-zinc-600">generado {new Date(data.generatedAt).toLocaleString('es-CL')}</span>
           </div>
@@ -122,7 +127,7 @@ export default function ReplayPage() {
             <Chart candles={candles} position={null} markers={markers} showEmas={false} dateTicks height={460} />
             <p className="text-xs text-zinc-500 mt-2">
               <span className="text-blue-400">▲</span> entrada · <span className="text-green-400">▼</span> salida ganadora ·{' '}
-              <span className="text-red-400">▼</span> salida perdedora (TP / SL / TREND = cambio de tendencia)
+              <span className="text-red-400">▼</span> salida perdedora (TP / SL / TREND = cambio de tendencia / SIGNAL = señal contraria)
             </p>
           </div>
 

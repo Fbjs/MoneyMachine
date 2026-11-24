@@ -148,7 +148,7 @@ export function rsi(data: number[], period: number): number[] {
   return result
 }
 
-export function computeIndicators(candles: Candle[]): Indicators | null {
+export function computeIndicators(candles: Candle[], smaPeriod = 50): Indicators | null {
   if (candles.length < 60) return null
   const closes = candles.map(c => c.close)
   const ema3Vals = ema(closes, 3)
@@ -172,6 +172,9 @@ export function computeIndicators(candles: Candle[]): Indicators | null {
     minusDi: di.minusDi,
     volatilityRatio: avgPrice === 0 ? 0 : (atrVals[last] / avgPrice) * 1000,
     close: currentPrice,
+    sma: closes.length >= smaPeriod
+      ? closes.slice(-smaPeriod).reduce((a, b) => a + b, 0) / smaPeriod
+      : NaN,
   }
 }
 

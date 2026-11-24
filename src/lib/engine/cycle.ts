@@ -12,7 +12,7 @@ import { formatTradeMessage } from '@/lib/utils/telegram'
 const LONG_SIDES = ['BUY', 'CALL', 'LONG']
 const SHORT_SIDES = ['SELL', 'PUT', 'SHORT']
 
-export type ExitReason = 'SL' | 'TP' | 'TREND'
+export type ExitReason = 'SL' | 'TP' | 'TREND' | 'SIGNAL'
 
 export interface CycleInput {
   /** Current time in ms (wall clock in production, simulated in replay). */
@@ -93,7 +93,7 @@ export async function runTradingCycle(state: BotState, input: CycleInput, deps: 
   state.lastEvaluatedCandleTime = lastClosedTime
   result.newCandle = isNewCandle
 
-  const indicators = computeIndicators(closed)
+  const indicators = computeIndicators(closed, config.signalSmaPeriod)
   if (!indicators) {
     errors.push('Not enough data for indicators')
     result.status = 'waiting_data'
@@ -109,7 +109,11 @@ export async function runTradingCycle(state: BotState, input: CycleInput, deps: 
   state.trend = trend
   result.trend = trend
 
-  const signal = generateSignal(indicators, trend, { rule: config.signalRule, adxMin: config.signalAdxMin })
+  const signal = generateSignal(indicators, trend, {
+    rule: config.signalRule, adxMin: config.signalAdxMin, smaPeriod: config.signalSmaPeriod,
+  })
+  // sma_trend exits on its own opposite signal; the other rules exit when the higher-timeframe trend flips.
+  const exitsOnSignal = config.signalRule === 'sma_trend'
   state.lastSignal = signal
 
   const riskMgr = new RiskManager(state.balance.total)
@@ -137,14 +141,16 @@ export async function runTradingCycle(state: BotState, input: CycleInput, deps: 
 
     const hitSl = sl > 0 && (isLong ? state.price <= sl : state.price >= sl)
     const hitTp = tp > 0 && (isLong ? state.price >= tp : state.price <= tp)
-    const trendReversed = (isLong && trend === 'DOWN') || (isShort && trend === 'UP')
+    const trendReversed = !exitsOnSignal && ((isLong && trend === 'DOWN') || (isShort && trend === 'UP'))
+    const signalExit = exitsOnSignal && ((isLong && signal.action !== 'BUY') || (isShort && signal.action !== 'SELL'))
+    const shouldExit = hitSl || hitTp || trendReversed || signalExit
 
     const isLiveSpot = !!deps.liveClose && config.mode === 'spot' && pos.side === 'BUY'
     let closeConfirmed = true
     let exitPrice = exit.exitPrice
     let grossPnl = exit.pnl
 
-    if ((hitSl || hitTp || trendReversed) && isLiveSpot && deps.liveClose) {
+    if (shouldExit && isLiveSpot && deps.liveClose) {
       try {
         const sold = await deps.liveClose(pos)
         if (sold.status === 'filled') {
@@ -164,7 +170,7 @@ export async function runTradingCycle(state: BotState, input: CycleInput, deps: 
       }
     }
 
-    if ((hitSl || hitTp || trendReversed) && closeConfirmed) {
+    if (shouldExit && closeConfirmed) {
       const balanceBeforeTrade = state.balance.total
       const fees = pos.stake * config.feeRate * 2
       const netPnl = grossPnl - fees
@@ -218,7 +224,7 @@ export async function runTradingCycle(state: BotState, input: CycleInput, deps: 
       riskMgr.onTradeResult(pos, balanceBeforeTrade, now)
       state.risk = riskMgr.getMetrics()
 
-      const exitReason: ExitReason = hitSl ? 'SL' : hitTp ? 'TP' : 'TREND'
+      const exitReason: ExitReason = hitSl ? 'SL' : hitTp ? 'TP' : signalExit ? 'SIGNAL' : 'TREND'
       events.push({ type: 'close', trade: pos, reason: exitReason })
       await notify(formatTradeMessage(
         'TRADE CLOSED', config.symbol,
@@ -300,14 +306,19 @@ export async function runTradingCycle(state: BotState, input: CycleInput, deps: 
       trade.quantity = trade.entryPrice > 0 ? trade.stake / trade.entryPrice : 0
     }
 
+    // A multiplier <= 0 disables that level (e.g. sma_trend exits only on its signal).
     if (indicators.atr > 0) {
       const isLong = LONG_SIDES.includes(trade.side)
-      trade.stopLossPrice = isLong
-        ? trade.entryPrice - config.slAtrMult * indicators.atr
-        : trade.entryPrice + config.slAtrMult * indicators.atr
-      trade.takeProfitPrice = isLong
-        ? trade.entryPrice + config.tpAtrMult * indicators.atr
-        : trade.entryPrice - config.tpAtrMult * indicators.atr
+      if (config.slAtrMult > 0) {
+        trade.stopLossPrice = isLong
+          ? trade.entryPrice - config.slAtrMult * indicators.atr
+          : trade.entryPrice + config.slAtrMult * indicators.atr
+      }
+      if (config.tpAtrMult > 0) {
+        trade.takeProfitPrice = isLong
+          ? trade.entryPrice + config.tpAtrMult * indicators.atr
+          : trade.entryPrice - config.tpAtrMult * indicators.atr
+      }
     }
 
     state.openPosition = trade

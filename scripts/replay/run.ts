@@ -184,7 +184,7 @@ async function main() {
     config: {
       symbol: config.symbol, mode: config.mode, timeframe: config.timeframe, trendTimeframe: config.trendTimeframe,
       trendEmaFast: config.trendEmaFast, trendEmaSlow: config.trendEmaSlow, signalRule: config.signalRule,
-      signalAdxMin: config.signalAdxMin, slAtrMult: config.slAtrMult, tpAtrMult: config.tpAtrMult,
+      signalAdxMin: config.signalAdxMin, signalSmaPeriod: config.signalSmaPeriod, slAtrMult: config.slAtrMult, tpAtrMult: config.tpAtrMult,
       trailingAtrMult: config.trailingAtrMult, feeRate: config.feeRate, stakeMode: config.stakeMode,
       stakeFixed: config.stakeFixed, stakePercent: config.stakePercent, maxPositionUsdt: config.maxPositionUsdt,
     },

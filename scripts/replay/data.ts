@@ -2,7 +2,7 @@
  * Historical klines cache for the replay. Stored as NDJSON rows [openTimeSec, o, h, l, c, v]
  * under .cache/replay/, and updated incrementally.
  */
-import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { binanceClient } from '@/lib/binance/client'
 import { parseKline, intervalToSeconds } from '@/lib/binance/types'
@@ -31,7 +31,12 @@ export async function loadCandles(symbol: string, interval: string, startSec: nu
   let candles = readCache(file)
 
   if (candles.length > 0 && candles[0].time > startSec) {
-    throw new Error(`Cache ${file} starts after ${new Date(startSec * 1000).toISOString()}; delete it to re-download`)
+    // Backfill the missing older range and rewrite the cache.
+    const raw = await binanceClient.getKlinesRange(symbol, interval, startSec * 1000, candles[0].time * 1000 - 1)
+    const older = raw.map(parseKline).filter(c => c.time < candles[0].time)
+    candles = older.concat(candles)
+    writeFileSync(file, candles.map(c => JSON.stringify([c.time, c.open, c.high, c.low, c.close, c.volume])).join('\n') + '\n')
+    if (log) console.log(`${interval}: backfilled ${older.length} older candles`)
   }
 
   const nowMs = Date.now()

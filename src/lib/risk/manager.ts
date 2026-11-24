@@ -38,8 +38,30 @@ export class RiskManager {
     return { ...this.metrics }
   }
 
+  /** Reset daily counters when the UTC day changes. Must run before any daily check. */
+  private rollDay(currentBalance: number) {
+    const today = todayKey()
+    if (this.metrics.dailyPnlDate !== today) {
+      this.metrics.dailyPnlDate = today
+      this.metrics.dailyPnl = 0
+      this.metrics.dayStartBalance = currentBalance
+      this.metrics.tradingDisabled = false
+      this.metrics.consecutiveLosses = 0
+    }
+  }
+
   authorize(currentBalance: number): { approved: boolean; stake: number; reason?: string } {
     const config = getConfig()
+
+    // Roll the day first so a previous day's lockout is lifted.
+    this.rollDay(currentBalance)
+
+    // All-time drawdown: informational only (dashboard), never blocks trading.
+    const peak = Math.max(this.metrics.equityPeak ?? currentBalance, currentBalance)
+    this.metrics.equityPeak = peak
+    const drawdownPct = peak > 0 ? ((peak - currentBalance) / peak) * 100 : 0
+    this.metrics.currentDrawdown = drawdownPct
+    this.metrics.maxDrawdown = Math.max(this.metrics.maxDrawdown, drawdownPct)
 
     if (this.metrics.tradingDisabled) {
       return { approved: false, stake: 0, reason: 'Trading disabled for the day' }
@@ -53,27 +75,14 @@ export class RiskManager {
       this.metrics.inCooldown = false
     }
 
-    const today = todayKey()
-    if (this.metrics.dailyPnlDate !== today) {
-      this.metrics.dailyPnlDate = today
-      this.metrics.dailyPnl = 0
-      this.metrics.dayStartBalance = currentBalance
-      this.metrics.tradingDisabled = false
-      this.metrics.consecutiveLosses = 0
-    }
-
-    const peak = Math.max(this.metrics.equityPeak ?? currentBalance, currentBalance)
-    this.metrics.equityPeak = peak
-    const drawdownPct = peak > 0 ? ((peak - currentBalance) / peak) * 100 : 0
-    this.metrics.currentDrawdown = drawdownPct
-    this.metrics.maxDrawdown = Math.max(this.metrics.maxDrawdown, drawdownPct)
-
-    if (drawdownPct > config.maxDailyDrawdownPct) {
-      this.metrics.tradingDisabled = true
-      return { approved: false, stake: 0, reason: `Max drawdown ${config.maxDailyDrawdownPct}% exceeded` }
-    }
-
+    // Daily drawdown: measured against today's starting balance.
     const dayStart = this.metrics.dayStartBalance ?? this.initialBalance
+    const dailyDrawdownPct = dayStart > 0 ? ((dayStart - currentBalance) / dayStart) * 100 : 0
+    if (dailyDrawdownPct > config.maxDailyDrawdownPct) {
+      this.metrics.tradingDisabled = true
+      return { approved: false, stake: 0, reason: `Max daily drawdown ${config.maxDailyDrawdownPct}% exceeded` }
+    }
+
     if (dayStart > 0 && this.metrics.dailyPnl <= -(config.dailyStopLossPct / 100) * dayStart) {
       this.metrics.tradingDisabled = true
       return { approved: false, stake: 0, reason: `Daily stop loss ${config.dailyStopLossPct}% reached` }
@@ -93,8 +102,10 @@ export class RiskManager {
     return { approved: true, stake: parseFloat(stake.toFixed(2)) }
   }
 
-  onTradeResult(trade: Trade) {
+  onTradeResult(trade: Trade, balanceBeforeTrade: number) {
     const config = getConfig()
+    // A position may close on a new day: attribute its P&L to the new day.
+    this.rollDay(balanceBeforeTrade)
     const pnl = trade.pnl || 0
     if (trade.status === 'LOSS') {
       this.metrics.consecutiveLosses++

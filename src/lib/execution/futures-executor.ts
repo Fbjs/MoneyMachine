@@ -11,6 +11,7 @@ export class FuturesExecutor implements Executor {
     signal: { action: string; confidence: number },
     config: BotConfig,
     balance: AccountBalance,
+    stake: number,
   ): Promise<ExecuteResult> {
     if (signal.action === 'HOLD') {
       return { success: false, error: 'No signal' }
@@ -28,7 +29,7 @@ export class FuturesExecutor implements Executor {
       entryPrice: 0,
       exitPrice: null,
       quantity: 0,
-      stake: config.stakeFixed,
+      stake,
       pnl: null,
       grossPnl: null,
       fees: null,

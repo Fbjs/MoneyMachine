@@ -1,6 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
+import Link from 'next/link'
 import Chart from '@/components/Chart'
 import MetricsBar from '@/components/MetricsBar'
 import StrategyPanel from '@/components/StrategyPanel'
@@ -27,6 +28,9 @@ export default function Home() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/replay" className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:bg-zinc-800">
+            Replay
+          </Link>
           {data?.config.paper && (
             <span className="text-xs bg-yellow-900/40 text-yellow-400 px-2 py-1 rounded border border-yellow-700">
               PAPER

@@ -134,6 +134,23 @@ class BinanceClient {
     return pages.flat()
   }
 
+  /** Fetch klines with open time in [startMs, endMs], paginating forward. Oldest first. */
+  async getKlinesRange(symbol: string, interval: string, startMs: number, endMs: number): Promise<RawKline[]> {
+    const out: RawKline[] = []
+    let cursor = startMs
+    while (cursor <= endMs) {
+      const page = await this.request<RawKline[]>('/api/v3/klines', {
+        symbol, interval, limit: '1000', startTime: cursor.toString(), endTime: endMs.toString(),
+      })
+      if (page.length === 0) break
+      out.push(...page)
+      const lastOpen = Number(page[page.length - 1][0])
+      if (page.length < 1000 || lastOpen <= cursor) break
+      cursor = lastOpen + 1
+    }
+    return out
+  }
+
   async getPrice(symbol: string): Promise<{ price: string }> {
     return this.request<{ symbol: string; price: string }>('/api/v3/ticker/price', { symbol })
   }

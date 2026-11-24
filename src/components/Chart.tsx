@@ -15,11 +15,19 @@ import {
   type LineData,
   type UTCTimestamp,
   type Time,
+  type SeriesMarker,
 } from 'lightweight-charts'
 
 interface Props {
   candles: Candle[]
   position: Trade | null
+  /** Extra markers (e.g. replay entries/exits). Replaces the open-position marker when set. */
+  markers?: SeriesMarker<Time>[]
+  /** Show EMA3/8/50 overlays (default true). */
+  showEmas?: boolean
+  /** Label the time axis with dates instead of hours (long ranges). */
+  dateTicks?: boolean
+  height?: number
 }
 
 function emaSeries(data: number[], period: number): (number | null)[] {
@@ -49,7 +57,7 @@ function toLineData(candles: Candle[], values: (number | null)[]): LineData[] {
 
 const LONG_SIDES = ['BUY', 'CALL', 'LONG']
 
-export default function Chart({ candles, position }: Props) {
+export default function Chart({ candles, position, markers, showEmas = true, dateTicks = false, height = 400 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -76,8 +84,13 @@ export default function Chart({ candles, position }: Props) {
         borderColor: '#27272a',
         timeVisible: true,
         secondsVisible: false,
+        // Long ranges (replay) need thinner bars so fitContent can show the whole history.
+        minBarSpacing: dateTicks ? 0.05 : 0.5,
         tickMarkFormatter: (time: number) => {
-          return new Date(time * 1000).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+          const d = new Date(time * 1000)
+          return dateTicks
+            ? d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: '2-digit' })
+            : d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
         },
       },
       rightPriceScale: {
@@ -131,7 +144,7 @@ export default function Chart({ candles, position }: Props) {
     return () => {
       chart.remove()
     }
-  }, [])
+  }, [dateTicks])
 
   useEffect(() => {
     if (!candleRef.current || candles.length === 0) return
@@ -146,9 +159,9 @@ export default function Chart({ candles, position }: Props) {
     candleRef.current.setData(cd)
 
     const closes = candles.map((c) => c.close)
-    ema3Ref.current?.setData(toLineData(candles, emaSeries(closes, 3)))
-    ema8Ref.current?.setData(toLineData(candles, emaSeries(closes, 8)))
-    ema50Ref.current?.setData(toLineData(candles, emaSeries(closes, 50)))
+    ema3Ref.current?.setData(showEmas ? toLineData(candles, emaSeries(closes, 3)) : [])
+    ema8Ref.current?.setData(showEmas ? toLineData(candles, emaSeries(closes, 8)) : [])
+    ema50Ref.current?.setData(showEmas ? toLineData(candles, emaSeries(closes, 50)) : [])
 
     if (position && tpAreaRef.current && slAreaRef.current) {
       const isLong = LONG_SIDES.includes(position.side)
@@ -188,13 +201,19 @@ export default function Chart({ candles, position }: Props) {
       slAreaRef.current?.setData([])
     }
 
+    // autoSize measures the container asynchronously; fit again once it has a real width.
     chartRef.current?.timeScale().fitContent()
-  }, [candles, position])
+    requestAnimationFrame(() => chartRef.current?.timeScale().fitContent())
+  }, [candles, position, showEmas])
 
   useEffect(() => {
     if (!candleRef.current) return
     markersRef.current?.setMarkers([])
 
+    if (markers) {
+      markersRef.current?.setMarkers([...markers].sort((a, b) => (a.time as number) - (b.time as number)))
+      return
+    }
     if (!position) return
 
     const isLong = LONG_SIDES.includes(position.side)
@@ -208,13 +227,13 @@ export default function Chart({ candles, position }: Props) {
       shape: isLong ? 'arrowUp' : 'arrowDown',
       text: position.side,
     }])
-  }, [position])
+  }, [position, markers])
 
   return (
     <div
       ref={containerRef}
       className="w-full rounded-lg overflow-hidden"
-      style={{ height: 400, minHeight: 400 }}
+      style={{ height, minHeight: height }}
     />
   )
 }

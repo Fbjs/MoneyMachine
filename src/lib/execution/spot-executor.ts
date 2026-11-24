@@ -1,10 +1,10 @@
-import type { Executor, ExecuteResult } from './types'
+import type { Executor, ExecuteResult, ExecuteContext } from './types'
 import type { Trade, BotConfig, AccountBalance } from '@/types'
 import { binanceClient, formatQuantity, avgFillPrice, commissionIn } from '@/lib/binance/client'
 
 let tradeCounter = 0
 
-function baseTrade(id: string, config: BotConfig, confidence: number, reason: string): Trade {
+function baseTrade(id: string, config: BotConfig, confidence: number, reason: string, now: number): Trade {
   return {
     id,
     symbol: config.symbol,
@@ -21,7 +21,7 @@ function baseTrade(id: string, config: BotConfig, confidence: number, reason: st
     confidence,
     aiScore: null,
     signalReason: reason,
-    openedAt: Date.now(),
+    openedAt: now,
     closedAt: null,
     stopLossPrice: null,
     takeProfitPrice: null,
@@ -36,6 +36,7 @@ export class SpotExecutor implements Executor {
     config: BotConfig,
     _balance: AccountBalance,
     stake: number,
+    ctx: ExecuteContext,
   ): Promise<ExecuteResult> {
     if (signal.action === 'HOLD') {
       return { success: false, error: 'No signal' }
@@ -68,16 +69,16 @@ export class SpotExecutor implements Executor {
         // Commission charged in the base asset reduces what we actually hold.
         const heldQty = executedQty - commissionIn(order, filters.baseAsset)
 
-        const trade = baseTrade(`spot_${order.orderId}`, config, signal.confidence, `${signal.action} signal`)
+        const trade = baseTrade(`spot_${order.orderId}`, config, signal.confidence, `${signal.action} signal`, ctx.now)
         trade.entryPrice = avgFillPrice(order)
         trade.quantity = heldQty
         trade.stake = parseFloat(order.cummulativeQuoteQty)
         return { success: true, trade }
       }
 
-      const { price } = await binanceClient.getPrice(config.symbol)
-      const entryPrice = parseFloat(price)
-      const trade = baseTrade(`spot_paper_${Date.now()}_${tradeCounter}`, config, signal.confidence, `${signal.action} signal (paper)`)
+      // Paper: fill at the cycle's price (live ticker in production, historical price in replay).
+      const entryPrice = ctx.price
+      const trade = baseTrade(`spot_paper_${ctx.now}_${tradeCounter}`, config, signal.confidence, `${signal.action} signal (paper)`, ctx.now)
       trade.entryPrice = entryPrice
       trade.quantity = stake / entryPrice
       trade.stake = stake

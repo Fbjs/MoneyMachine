@@ -1,4 +1,4 @@
-import type { Executor, ExecuteResult } from './types'
+import type { Executor, ExecuteResult, ExecuteContext } from './types'
 import type { Trade, TradeSide, BotConfig, AccountBalance } from '@/types'
 import { signalToSide } from '@/lib/strategy/signal-engine'
 
@@ -12,6 +12,7 @@ export class BinaryExecutor implements Executor {
     config: BotConfig,
     balance: AccountBalance,
     stake: number,
+    ctx: ExecuteContext,
   ): Promise<ExecuteResult> {
     if (signal.action === 'HOLD') {
       return { success: false, error: 'No signal' }
@@ -20,11 +21,11 @@ export class BinaryExecutor implements Executor {
     tradeCounter++
     const side = signalToSide(signal.action as any, 'binary') as TradeSide
     const trade: Trade = {
-      id: `bin_${Date.now()}_${tradeCounter}`,
+      id: `bin_${ctx.now}_${tradeCounter}`,
       symbol: config.symbol,
       side,
       mode: 'binary',
-      entryPrice: 0,
+      entryPrice: ctx.price,
       exitPrice: null,
       quantity: 0,
       stake,
@@ -35,7 +36,7 @@ export class BinaryExecutor implements Executor {
       confidence: signal.confidence,
       aiScore: null,
       signalReason: `${signal.action} signal`,
-      openedAt: Date.now(),
+      openedAt: ctx.now,
       closedAt: null,
       stopLossPrice: null,
       takeProfitPrice: null,

@@ -261,6 +261,21 @@ El PnL neto descuenta comisión round-trip (`FEE_RATE` × 2). Las operaciones cu
 
 El endpoint `GET /api/backtest` ejecuta un backtest histórico (replay de klines) con la estrategia actual, incluyendo fees, y devuelve métricas (win rate, profit factor, max drawdown, expectativa) y el listado de trades. Útil para validar cambios de parámetros antes de desplegar.
 
+## Replay histórico
+
+`npm run replay` ejecuta **el mismo código del cron** (`src/lib/engine/cycle.ts`) minuto a minuto sobre datos antiguos de Binance, con un reloj simulado, como si el bot hubiera estado en vivo. A diferencia del backtest, incluye el risk manager (cooldowns, stop diario, stake reducido), la regla de una entrada por vela y SL/TP revisados con el precio de cada minuto.
+
+```bash
+# Misma configuración que producción, vía variables de entorno
+BOT_MODE=spot TIMEFRAME=4h TREND_TIMEFRAME=1d TREND_EMA_FAST=20 TREND_EMA_SLOW=50 \
+SL_ATR_MULT=1.5 TP_ATR_MULT=5 SIGNAL_RULE=adx_di SIGNAL_ADX_MIN=30 \
+npm run replay -- --from 2025-03-01
+```
+
+- La primera vez descarga velas de 1m, 4h y 1d en `.cache/replay/` (gitignored); luego solo agrega lo nuevo.
+- `--every-minute` desactiva el avance rápido (salta minutos sin posición ni cierre de vela) para verificar que da lo mismo.
+- Escribe `public/replay/latest.json`, que se ve en la página **`/replay`** del dashboard (gráfico con entradas/salidas, tabla de operaciones, métricas y comparación con el backtest). Para publicarlo, commitea ese archivo.
+
 ## Dashboard
 
 El dashboard en `/` muestra:

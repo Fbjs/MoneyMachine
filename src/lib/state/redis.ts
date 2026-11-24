@@ -42,6 +42,20 @@ export async function setState(state: BotState): Promise<void> {
   memoryState = state
 }
 
+/**
+ * Save a copy of the current state under a timestamped key (kept 30 days) and return the key.
+ * Returns null when there is nothing to back up.
+ */
+export async function backupState(): Promise<string | null> {
+  const current = await getState()
+  if (!current) return null
+  const key = `${STATE_KEY}:backup:${new Date().toISOString()}`
+  const redis = getRedis()
+  if (!redis) throw new Error('Redis not configured; cannot back up state')
+  await redis.set(key, current, { ex: 30 * 24 * 3600 })
+  return key
+}
+
 export async function updateState(updater: (state: BotState) => BotState): Promise<BotState | null> {
   const current = await getState()
   if (!current) return null

@@ -8,7 +8,7 @@ import { parseKline, intervalToSeconds, closedCandles } from '@/lib/binance/type
 import { computeIndicators } from '@/lib/strategy/indicators'
 import { generateSignal } from '@/lib/strategy/signal-engine'
 import { computeTrend } from '@/lib/strategy/trend'
-import { aiFilter } from '@/lib/ai/filter'
+import { filterForRule } from '@/lib/ai/filter'
 import { RiskManager } from '@/lib/risk/manager'
 import { getExecutor } from '@/lib/execution/factory'
 import { sendTelegram, formatTradeMessage } from '@/lib/utils/telegram'
@@ -136,7 +136,7 @@ async function runCycle() {
     }
     state.trend = trend
 
-    const signal = generateSignal(indicators, trend)
+    const signal = generateSignal(indicators, trend, { rule: config.signalRule, adxMin: config.signalAdxMin })
     state.lastSignal = signal
 
     const riskMgr = new RiskManager(state.balance.total)
@@ -281,7 +281,7 @@ async function runCycle() {
       return NextResponse.json({ ...result, errors })
     }
 
-    const filterResult = aiFilter(signal)
+    const filterResult = filterForRule(signal, config.signalRule)
     if (!filterResult.passed) {
       result.signal = 'FILTERED'
       result.filterScore = filterResult.score

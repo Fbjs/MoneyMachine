@@ -171,6 +171,7 @@ export function computeIndicators(candles: Candle[]): Indicators | null {
     plusDi: di.plusDi,
     minusDi: di.minusDi,
     volatilityRatio: avgPrice === 0 ? 0 : (atrVals[last] / avgPrice) * 1000,
+    close: currentPrice,
   }
 }
 

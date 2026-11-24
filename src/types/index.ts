@@ -1,4 +1,5 @@
 export type BotMode = 'binary' | 'spot' | 'futures'
+export type SignalRule = 'momentum' | 'adx_di'
 export type StakeMode = 'fixed' | 'percent'
 export type SignalAction = 'BUY' | 'SELL' | 'HOLD'
 export type TrendDirection = 'UP' | 'DOWN' | 'SIDEWAYS'
@@ -25,6 +26,8 @@ export interface Indicators {
   plusDi: number
   minusDi: number
   volatilityRatio: number
+  /** Close of the last candle used for the indicators. */
+  close: number
 }
 
 export interface Signal {
@@ -113,6 +116,8 @@ export interface BotConfig {
   trailingAtrMult: number
   dailyStopLossPct: number
   tradeActiveHours: string
+  signalRule: SignalRule
+  signalAdxMin: number
 }
 
 export interface BotState {

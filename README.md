@@ -117,6 +117,10 @@ TRAILING_ATR_MULT=0            # trailing stop (0 = desactivado)
 DAILY_STOP_LOSS_PCT=1.0        # stop diario de pérdidas (%)
 TRADE_ACTIVE_HOURS=            # horario activo UTC (ej. "08-20"). Vacío = 24h
 
+# Regla de señal
+SIGNAL_RULE=momentum           # momentum (legacy, con filtro AI) | adx_di (ADX + DI + EMA50, sin filtro AI)
+SIGNAL_ADX_MIN=30              # ADX mínimo para adx_di
+
 # Seguridad del cron (OBLIGATORIO: sin esto /api/cron/trade responde 500)
 CRON_SECRET=                   # genera uno con: openssl rand -hex 32
 

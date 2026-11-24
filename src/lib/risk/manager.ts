@@ -1,8 +1,8 @@
 import type { RiskMetrics, Trade } from '@/types'
 import { getConfig } from '@/lib/config'
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10)
+function todayKey(now: number): string {
+  return new Date(now).toISOString().slice(0, 10)
 }
 
 export class RiskManager {
@@ -39,8 +39,8 @@ export class RiskManager {
   }
 
   /** Reset daily counters when the UTC day changes. Must run before any daily check. */
-  private rollDay(currentBalance: number) {
-    const today = todayKey()
+  private rollDay(currentBalance: number, now: number) {
+    const today = todayKey(now)
     if (this.metrics.dailyPnlDate !== today) {
       this.metrics.dailyPnlDate = today
       this.metrics.dailyPnl = 0
@@ -50,11 +50,11 @@ export class RiskManager {
     }
   }
 
-  authorize(currentBalance: number): { approved: boolean; stake: number; reason?: string } {
+  authorize(currentBalance: number, now = Date.now()): { approved: boolean; stake: number; reason?: string } {
     const config = getConfig()
 
     // Roll the day first so a previous day's lockout is lifted.
-    this.rollDay(currentBalance)
+    this.rollDay(currentBalance, now)
 
     // All-time drawdown: informational only (dashboard), never blocks trading.
     const peak = Math.max(this.metrics.equityPeak ?? currentBalance, currentBalance)
@@ -68,8 +68,8 @@ export class RiskManager {
     }
 
     if (this.metrics.inCooldown) {
-      if (Date.now() < this.metrics.cooldownEnd) {
-        const remaining = Math.ceil((this.metrics.cooldownEnd - Date.now()) / 1000)
+      if (now < this.metrics.cooldownEnd) {
+        const remaining = Math.ceil((this.metrics.cooldownEnd - now) / 1000)
         return { approved: false, stake: 0, reason: `Cooldown ${remaining}s remaining` }
       }
       this.metrics.inCooldown = false
@@ -102,26 +102,26 @@ export class RiskManager {
     return { approved: true, stake: parseFloat(stake.toFixed(2)) }
   }
 
-  onTradeResult(trade: Trade, balanceBeforeTrade: number) {
+  onTradeResult(trade: Trade, balanceBeforeTrade: number, now = Date.now()) {
     const config = getConfig()
     // A position may close on a new day: attribute its P&L to the new day.
-    this.rollDay(balanceBeforeTrade)
+    this.rollDay(balanceBeforeTrade, now)
     const pnl = trade.pnl || 0
     if (trade.status === 'LOSS') {
       this.metrics.consecutiveLosses++
       this.metrics.dailyPnl += pnl
       if (this.metrics.consecutiveLosses >= 5) {
         this.metrics.inCooldown = true
-        this.metrics.cooldownEnd = Date.now() + config.lossCooldownSeconds * 1000 * 6
+        this.metrics.cooldownEnd = now + config.lossCooldownSeconds * 1000 * 6
       } else if (this.metrics.consecutiveLosses >= 3) {
         this.metrics.inCooldown = true
-        this.metrics.cooldownEnd = Date.now() + config.lossCooldownSeconds * 1000
+        this.metrics.cooldownEnd = now + config.lossCooldownSeconds * 1000
       }
     } else if (trade.status === 'WIN') {
       this.metrics.consecutiveLosses = 0
       this.metrics.dailyPnl += pnl
       this.metrics.inCooldown = true
-      this.metrics.cooldownEnd = Date.now() + config.cooldownSeconds * 1000
+      this.metrics.cooldownEnd = now + config.cooldownSeconds * 1000
     }
   }
 }

@@ -26,7 +26,8 @@ const envSchema = z.object({
   TRAILING_ATR_MULT: z.string().default('0').transform(v => parseFloat(v)),
   DAILY_STOP_LOSS_PCT: z.string().default('1.0').transform(v => parseFloat(v)),
   TRADE_ACTIVE_HOURS: z.string().default(''),
-  SIGNAL_RULE: z.enum(['momentum', 'adx_di']).default('momentum'),
+  SIGNAL_RULE: z.enum(['momentum', 'adx_di', 'sma_trend']).default('momentum'),
+  SIGNAL_SMA_PERIOD: z.string().default('50').transform(v => parseInt(v)),
   SIGNAL_ADX_MIN: z.string().default('30').transform(v => parseFloat(v)),
   CRON_SECRET: z.string().default(''),
   UPSTASH_REDIS_URL: z.string().default(''),
@@ -73,6 +74,7 @@ export function getConfig(): BotConfig {
     tradeActiveHours: env.TRADE_ACTIVE_HOURS,
     signalRule: env.SIGNAL_RULE as SignalRule,
     signalAdxMin: env.SIGNAL_ADX_MIN,
+    signalSmaPeriod: env.SIGNAL_SMA_PERIOD,
   }
 }
 

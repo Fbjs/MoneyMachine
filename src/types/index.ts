@@ -1,5 +1,5 @@
 export type BotMode = 'binary' | 'spot' | 'futures'
-export type SignalRule = 'momentum' | 'adx_di'
+export type SignalRule = 'momentum' | 'adx_di' | 'sma_trend'
 export type StakeMode = 'fixed' | 'percent'
 export type SignalAction = 'BUY' | 'SELL' | 'HOLD'
 export type TrendDirection = 'UP' | 'DOWN' | 'SIDEWAYS'
@@ -28,6 +28,8 @@ export interface Indicators {
   volatilityRatio: number
   /** Close of the last candle used for the indicators. */
   close: number
+  /** Simple moving average of closes over the configured period (NaN if not enough candles). */
+  sma: number
 }
 
 export interface Signal {
@@ -118,6 +120,7 @@ export interface BotConfig {
   tradeActiveHours: string
   signalRule: SignalRule
   signalAdxMin: number
+  signalSmaPeriod: number
 }
 
 export interface BotState {

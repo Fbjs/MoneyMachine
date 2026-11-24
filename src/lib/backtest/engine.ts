@@ -17,7 +17,7 @@ export interface BacktestTrade {
   fees: number
   netPnl: number
   aiScore: number
-  exitReason: 'SL' | 'TP' | 'TREND'
+  exitReason: 'SL' | 'TP' | 'TREND' | 'SIGNAL'
   barsHeld: number
 }
 
@@ -191,8 +191,8 @@ export function runBacktest(
     const barClose = candle.time + options.tradingIntervalSec
     const trendDir = trendAt(barClose)
     const dir: TrendDirection = trendDir ?? 'SIDEWAYS'
-    const window = tradingCandles.slice(Math.max(0, i - 199), i + 1)
-    const indicators = computeIndicators(window)
+    const window = tradingCandles.slice(Math.max(0, i - Math.max(199, config.signalSmaPeriod)), i + 1)
+    const indicators = computeIndicators(window, config.signalSmaPeriod)
     if (!indicators) continue
 
     meta.barsEvaluated++
@@ -221,7 +221,14 @@ export function runBacktest(
         const fill = isLong ? Math.max(tp, candle.open) : Math.min(tp, candle.open)
         closePosition(position, i, candle.time, fill, 'TP')
         position = null
-      } else if ((isLong && dir === 'DOWN') || (isShort && dir === 'UP')) {
+      } else if (config.signalRule === 'sma_trend' && (() => {
+        // Exit on the opposite signal at the bar close.
+        const s = generateSignal(indicators, dir, { rule: 'sma_trend', smaPeriod: config.signalSmaPeriod })
+        return (isLong && s.action !== 'BUY') || (isShort && s.action !== 'SELL')
+      })()) {
+        closePosition(position, i, candle.time, price, 'SIGNAL')
+        position = null
+      } else if (config.signalRule !== 'sma_trend' && ((isLong && dir === 'DOWN') || (isShort && dir === 'UP'))) {
         closePosition(position, i, candle.time, price, 'TREND')
         position = null
       } else if (config.trailingAtrMult > 0 && indicators.atr > 0) {
@@ -241,7 +248,7 @@ export function runBacktest(
         action = decision.action
         score = decision.score
       } else {
-        const signal = generateSignal(indicators, dir, { rule: config.signalRule, adxMin: config.signalAdxMin })
+        const signal = generateSignal(indicators, dir, { rule: config.signalRule, adxMin: config.signalAdxMin, smaPeriod: config.signalSmaPeriod })
         if (signal.action === 'HOLD') continue
         const filterResult = filterForRule(signal, config.signalRule)
         if (!filterResult.passed) continue
@@ -268,8 +275,9 @@ export function runBacktest(
         entryPrice: price,
         stake,
         quantity,
-        stopLossPrice: isLong ? price - config.slAtrMult * indicators.atr : price + config.slAtrMult * indicators.atr,
-        takeProfitPrice: isLong ? price + config.tpAtrMult * indicators.atr : price - config.tpAtrMult * indicators.atr,
+        // NaN disables a level (multiplier <= 0): every comparison against it is false.
+        stopLossPrice: config.slAtrMult > 0 ? (isLong ? price - config.slAtrMult * indicators.atr : price + config.slAtrMult * indicators.atr) : NaN,
+        takeProfitPrice: config.tpAtrMult > 0 ? (isLong ? price + config.tpAtrMult * indicators.atr : price - config.tpAtrMult * indicators.atr) : NaN,
         aiScore: score,
         openedAt: candle.time,
         openedIndex: i,

@@ -33,6 +33,9 @@ interface ExchangeInfo {
   symbols: Array<{ baseAsset: string; quoteAsset: string; filters: ExchangeFilter[] }>
 }
 
+/** Raw kline row from Binance: [openTime, open, high, low, close, volume, closeTime, ...]. */
+export type RawKline = (string | number)[]
+
 class BinanceClient {
   private apiKey: string
   private secretKey: string
@@ -107,6 +110,28 @@ class BinanceClient {
       interval,
       limit: limit.toString(),
     })
+  }
+
+  /**
+   * Fetch the most recent `total` klines, paginating backwards past Binance's 1000-per-request cap.
+   * Returned oldest first.
+   */
+  async getKlinesHistory(symbol: string, interval: string, total: number): Promise<RawKline[]> {
+    const pages: RawKline[][] = []
+    let remaining = total
+    let endTime: number | undefined
+    while (remaining > 0) {
+      const limit = Math.min(remaining, 1000)
+      const params: Record<string, string> = { symbol, interval, limit: limit.toString() }
+      if (endTime !== undefined) params.endTime = endTime.toString()
+      const page = await this.request<RawKline[]>('/api/v3/klines', params)
+      if (page.length === 0) break
+      pages.unshift(page)
+      remaining -= page.length
+      if (page.length < limit) break // reached the start of the market's history
+      endTime = Number(page[0][0]) - 1
+    }
+    return pages.flat()
   }
 
   async getPrice(symbol: string): Promise<{ price: string }> {
